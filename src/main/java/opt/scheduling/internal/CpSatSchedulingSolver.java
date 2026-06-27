@@ -246,10 +246,22 @@ public final class CpSatSchedulingSolver {
 
     private void applyMinRest(CpModel model, BoolVar[][] x, int E, int S, Rule.MinRestBetweenShifts rule) {
         int minMinutes = (int) rule.minRest().toMinutes();
+        // Pre-compute absolute start/end for each shift using its 0-based day index in the horizon.
+        int[] absStart = new int[S];
+        int[] absEnd   = new int[S];
+        for (int s = 0; s < S; s++) {
+            int dayIdx = horizonDayIndex(shifts.get(s).day());
+            absStart[s] = shifts.get(s).absoluteStartMinutes(dayIdx);
+            absEnd[s]   = shifts.get(s).absoluteEndMinutes(dayIdx);
+        }
         for (int e = 0; e < E; e++) {
             for (int s1 = 0; s1 < S; s1++) {
                 for (int s2 = s1 + 1; s2 < S; s2++) {
-                    if (shifts.get(s1).tooCloseWith(shifts.get(s2), minMinutes)) {
+                    int gapAB = absStart[s2] - absEnd[s1];
+                    int gapBA = absStart[s1] - absEnd[s2];
+                    boolean tooClose = (gapAB >= 0 && gapAB < minMinutes)
+                                    || (gapBA >= 0 && gapBA < minMinutes);
+                    if (tooClose) {
                         model.addLinearConstraint(
                                 LinearExpr.newBuilder().add(x[e][s1]).add(x[e][s2]).build(), 0, 1);
                     }
@@ -261,25 +273,32 @@ public final class CpSatSchedulingSolver {
     private void applyMaxConsecutiveWorkDays(CpModel model, BoolVar[][] x, int E, int S,
                                              Rule.MaxConsecutiveWorkDays rule) {
         int maxDays = rule.days();
-        Map<java.time.DayOfWeek, List<Integer>> byDay = new LinkedHashMap<>();
+        // Index by calendar-day position (0 = horizonStart), not by DayOfWeek.
+        // This is correct for horizons longer than 7 days where the same DayOfWeek repeats.
+        List<List<Integer>> byIndex = new ArrayList<>(horizonDays);
+        for (int i = 0; i < horizonDays; i++) byIndex.add(new ArrayList<>());
         for (int s = 0; s < S; s++) {
-            byDay.computeIfAbsent(shifts.get(s).day(), k -> new ArrayList<>()).add(s);
-        }
-        List<java.time.DayOfWeek> orderedDays = new ArrayList<>();
-        for (int i = 0; i < horizonDays; i++) {
-            orderedDays.add(horizonStart.plusDays(i).getDayOfWeek());
+            int idx = horizonDayIndex(shifts.get(s).day());
+            if (idx >= 0) byIndex.get(idx).add(s);
         }
         int windowSize = maxDays + 1;
         for (int e = 0; e < E; e++) {
-            for (int start = 0; start <= orderedDays.size() - windowSize; start++) {
+            for (int start = 0; start <= horizonDays - windowSize; start++) {
                 LinearExprBuilder window = LinearExpr.newBuilder();
                 for (int d = start; d < start + windowSize; d++) {
-                    List<Integer> dayShifts = byDay.getOrDefault(orderedDays.get(d), List.of());
-                    for (int s : dayShifts) window.add(x[e][s]);
+                    for (int s : byIndex.get(d)) window.add(x[e][s]);
                 }
                 model.addLinearConstraint(window, 0, maxDays);
             }
         }
+    }
+
+    /** Returns the 0-based index of the first occurrence of the given DayOfWeek in the horizon, or -1. */
+    private int horizonDayIndex(java.time.DayOfWeek dow) {
+        for (int i = 0; i < horizonDays; i++) {
+            if (horizonStart.plusDays(i).getDayOfWeek() == dow) return i;
+        }
+        return -1;
     }
 
     // ── Validation ──────────────────────────────────────────────────────────

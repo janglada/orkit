@@ -90,8 +90,6 @@ public class SmokeTest {
                         .operation().on("M3").takes(4)
                         .then().on("M2").takes(3))
 
-                .minimizeMakespan()
-
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         System.out.println("Status:   " + schedule.status());

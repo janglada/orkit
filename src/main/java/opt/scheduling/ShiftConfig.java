@@ -1,5 +1,7 @@
 package opt.scheduling;
 
+import opt.ModelException;
+
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 
@@ -32,6 +34,7 @@ public final class ShiftConfig {
     }
 
     public ShiftConfig needs(int count) {
+        if (count < 1) throw new ModelException("needs() must be >= 1, got: " + count);
         this.needsCount = count;
         return this;
     }

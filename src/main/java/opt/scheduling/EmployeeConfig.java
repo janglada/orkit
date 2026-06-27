@@ -1,5 +1,7 @@
 package opt.scheduling;
 
+import opt.ModelException;
+
 import java.time.DayOfWeek;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -25,6 +27,7 @@ public final class EmployeeConfig {
     }
 
     public EmployeeConfig costPerHour(int cost) {
+        if (cost < 0) throw new ModelException("costPerHour must be >= 0, got: " + cost);
         this.costPerHour = cost;
         return this;
     }
@@ -35,6 +38,7 @@ public final class EmployeeConfig {
     }
 
     public EmployeeConfig maxHoursPerWeek(int hours) {
+        if (hours <= 0) throw new ModelException("maxHoursPerWeek must be > 0, got: " + hours);
         this.maxHoursPerWeek = hours;
         return this;
     }

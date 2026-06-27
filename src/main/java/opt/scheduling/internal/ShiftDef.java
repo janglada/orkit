@@ -19,15 +19,20 @@ public record ShiftDef(
         return end > start ? end - start : (24 * 60 - start) + end;
     }
 
-    /** Whether this shift's rest gap with another shift is shorter than minRestMinutes. */
-    public boolean tooCloseWith(ShiftDef other, int minRestMinutes) {
-        // Gap = end of this to start of other (or end of other to start of this)
-        int myEnd    = from.toSecondOfDay() / 60 + durationMinutes();
-        int otherEnd = other.from().toSecondOfDay() / 60 + other.durationMinutes();
-        int gapAB    = other.from().toSecondOfDay() / 60 - myEnd;
-        int gapBA    = from.toSecondOfDay() / 60 - otherEnd;
-        // Consider only forward gaps (other starts after this ends, or this starts after other ends)
-        return (gapAB >= 0 && gapAB < minRestMinutes) || (gapBA >= 0 && gapBA < minRestMinutes);
+    /**
+     * Start time in absolute minutes from the beginning of the horizon.
+     * @param dayIndex 0-based position of this shift's day within the horizon
+     */
+    public int absoluteStartMinutes(int dayIndex) {
+        return dayIndex * 24 * 60 + from.toSecondOfDay() / 60;
+    }
+
+    /**
+     * End time in absolute minutes from the beginning of the horizon.
+     * @param dayIndex 0-based position of this shift's day within the horizon
+     */
+    public int absoluteEndMinutes(int dayIndex) {
+        return absoluteStartMinutes(dayIndex) + durationMinutes();
     }
 
     /** Returns the concrete date for this shift within the given horizon, or null if day not in horizon. */

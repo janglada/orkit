@@ -87,8 +87,6 @@ public class PcbManufacturingJobShop {
                         .then().on("REFLOW").takes(18)
                         .then().on("AOI").takes(4))
 
-                .minimizeMakespan()
-
                 .solver()
                 .timeLimit(Duration.ofSeconds(30))
                 .workers(8)

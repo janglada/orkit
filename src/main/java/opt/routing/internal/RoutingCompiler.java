@@ -24,6 +24,7 @@ public final class RoutingCompiler {
     private final Strategy firstSolution;
     private final Metaheuristic metaheuristic;
     private final RoutingGoal goal;
+    private final double travelSpeedKmh;
 
     private long timeLimitSeconds = 30;
     private int workers = 1;
@@ -34,9 +35,10 @@ public final class RoutingCompiler {
                            List<VehicleDef> vehicles, List<StopDef> stops,
                            DistanceSource distanceSource, long droppingPenalty,
                            Strategy firstSolution, Metaheuristic metaheuristic,
-                           RoutingGoal goal) {
+                           RoutingGoal goal, double travelSpeedKmh) {
         this.depotId = depotId;
         this.depotLat = depotLat;
+        this.travelSpeedKmh = travelSpeedKmh > 0 ? travelSpeedKmh : 40.0;
         this.depotLon = depotLon;
         this.vehicles = List.copyOf(vehicles);
         this.stops = List.copyOf(stops);
@@ -180,7 +182,13 @@ public final class RoutingCompiler {
 
     private long[][] buildDistanceMatrix(int numNodes) {
         if (distanceSource instanceof DistanceSource.PrecomputedMatrix m) {
-            return m.meters();
+            long[][] mat = m.meters();
+            if (mat.length != numNodes || Arrays.stream(mat).anyMatch(r -> r.length != numNodes)) {
+                throw new ModelException(
+                        "Distance matrix must be " + numNodes + "×" + numNodes
+                        + " (1 depot + " + stops.size() + " stops)");
+            }
+            return mat;
         }
         // Haversine
         double[] lats = new double[numNodes];
@@ -200,14 +208,15 @@ public final class RoutingCompiler {
         return matrix;
     }
 
-    /** Converts a distance matrix (meters) to a travel-time matrix (minutes) at 40 km/h. */
+    /** Converts a distance matrix (meters) to a travel-time matrix (minutes) at {@code travelSpeedKmh}. */
     private long[][] buildTimeMatrix(long[][] distMeters) {
         int n = distMeters.length;
         long[][] time = new long[n][n];
-        // 40 km/h = 40000 m / 60 min = 667 m/min
+        // metersPerMinute = km/h × 1000 / 60
+        double metersPerMinute = travelSpeedKmh * 1000.0 / 60.0;
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
-                time[i][j] = Math.max(1, distMeters[i][j] / 667);
+                time[i][j] = Math.max(1, Math.round(distMeters[i][j] / metersPerMinute));
             }
         }
         return time;

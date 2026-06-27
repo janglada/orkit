@@ -264,4 +264,72 @@ class SchedulingTest {
         assertThat(r1.objective()).isEqualTo(r2.objective());
         assertThat(r1.staffOf("s")).isEqualTo(r2.staffOf("s"));
     }
+
+    // ── T-S13: minRest correctly crosses day boundary (regression for tooCloseWith bug) ──
+
+    @Test
+    void minRestAllowsAssignmentsOnNonAdjacentDays() {
+        // Mon night 23:00–07:00 ends on Tue at 07:00.
+        // Wed day 07:00–15:00 starts 48 h later — well above the 11 h threshold.
+        // Before the fix, tooCloseWith() used only clock time and would block this.
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN"))
+                .shift("mon-night", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(23, 0)).to(LocalTime.of(7, 0)).needs(1).withSkill("RN"))
+                .shift("wed-day",   s -> s.on(DayOfWeek.WEDNESDAY)
+                        .from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(1).withSkill("RN"))
+                .constrain(minRestBetweenShifts(Duration.ofHours(11)))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        // Both shifts are far apart; alice must be assigned to both (she's the only employee).
+        assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(roster.shiftsFor("alice")).containsExactlyInAnyOrder("mon-night", "wed-day");
+    }
+
+    // ── T-S14: maxConsecutiveWorkDays correct over a 14-day (two-week) horizon ──
+
+    @Test
+    void maxConsecutiveWorkDaysCorrectOverMultiWeekHorizon() {
+        // 14-day horizon, 3 employees, 14 shifts (one per day), max consecutive 5.
+        // With the old DayOfWeek-keyed map, week-1 Monday and week-2 Monday shared a slot
+        // and the constraint was silently wrong. Now each calendar day has its own slot.
+        LocalDate twoWeek = MON;
+        var builder = Optimize.scheduling().horizon(twoWeek, 14);
+
+        builder.employee("a", e -> e.skills("X"))
+               .employee("b", e -> e.skills("X"))
+               .employee("c", e -> e.skills("X"));
+
+        DayOfWeek[] dow = DayOfWeek.values(); // MON..SUN (1..7)
+        String[] names = {"s01","s02","s03","s04","s05","s06","s07",
+                          "s08","s09","s10","s11","s12","s13","s14"};
+        for (int i = 0; i < 14; i++) {
+            final int day = i;
+            builder.shift(names[i], s -> s
+                    .on(twoWeek.plusDays(day).getDayOfWeek())
+                    .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0))
+                    .needs(1).withSkill("X"));
+        }
+        builder.constrain(maxConsecutiveWorkDays(5));
+
+        EmployeeRoster roster = builder.solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(roster.isFeasible()).isTrue();
+        // Verify no employee works 6+ consecutive shifts
+        for (String emp : List.of("a", "b", "c")) {
+            List<String> empShifts = roster.shiftsFor(emp);
+            int consecutive = 0;
+            for (String name : names) {
+                if (empShifts.contains(name)) {
+                    consecutive++;
+                    assertThat(consecutive)
+                            .as("%s exceeded maxConsecutiveWorkDays(5)", emp)
+                            .isLessThanOrEqualTo(5);
+                } else {
+                    consecutive = 0;
+                }
+            }
+        }
+    }
 }

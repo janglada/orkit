@@ -21,6 +21,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     private DistanceSource distanceSource   = DistanceSource.haversine();
     private long droppingPenalty            = 0;
     private RoutingGoal goal                = new RoutingGoal.MinimizeTotalDistance();
+    private double travelSpeedKmh           = 40.0;
 
     public RoutingBuilder depot(String id, double lat, double lon) {
         this.depotId  = id;
@@ -73,6 +74,16 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         return this;
     }
 
+    /**
+     * Average vehicle speed used to convert haversine distances to travel times for time-window
+     * constraints. Default: 40 km/h. Typical values: urban 20–30, suburban 50, highway 90.
+     */
+    public RoutingBuilder travelSpeedKmh(double speedKmh) {
+        if (speedKmh <= 0) throw new opt.ModelException("travelSpeedKmh must be > 0, got: " + speedKmh);
+        this.travelSpeedKmh = speedKmh;
+        return this;
+    }
+
     /** Builds an immutable, reusable problem instance. */
     public OptimizationProblem<RoutingPlan> build() {
         validate();
@@ -88,7 +99,8 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         validate();
         Snap snap = snapshot();
         return new RoutingSolver(snap.depotId(), snap.depotLat(), snap.depotLon(),
-                snap.vehicles(), snap.stops(), snap.distanceSource(), snap.droppingPenalty(), snap.goal());
+                snap.vehicles(), snap.stops(), snap.distanceSource(),
+                snap.droppingPenalty(), snap.goal(), snap.travelSpeedKmh());
     }
 
     // ── Internals ────────────────────────────────────────────────────────────
@@ -102,13 +114,14 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     private Snap snapshot() {
         return new Snap(depotId, depotLat, depotLon,
                 List.copyOf(vehicles), List.copyOf(stops),
-                distanceSource, droppingPenalty, goal);
+                distanceSource, droppingPenalty, goal, travelSpeedKmh);
     }
 
     private record Snap(
             String depotId, double depotLat, double depotLon,
             List<VehicleDef> vehicles, List<StopDef> stops,
-            DistanceSource distanceSource, long droppingPenalty, RoutingGoal goal
+            DistanceSource distanceSource, long droppingPenalty, RoutingGoal goal,
+            double travelSpeedKmh
     ) {}
 
     private static final class RoutingProblem implements OptimizationProblem<RoutingPlan> {
@@ -122,7 +135,8 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         @Override
         public RoutingSolver solver() {
             return new RoutingSolver(snap.depotId(), snap.depotLat(), snap.depotLon(),
-                    snap.vehicles(), snap.stops(), snap.distanceSource(), snap.droppingPenalty(), snap.goal());
+                    snap.vehicles(), snap.stops(), snap.distanceSource(),
+                    snap.droppingPenalty(), snap.goal(), snap.travelSpeedKmh());
         }
     }
 }

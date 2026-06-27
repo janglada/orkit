@@ -1,5 +1,7 @@
 package opt.jobshop;
 
+import opt.ModelException;
+
 import java.util.Arrays;
 import java.util.List;
 
@@ -23,11 +25,15 @@ public final class OperationConfig {
     }
 
     public OperationConfig onAnyOf(String... machines) {
+        if (machines.length < 2) {
+            throw new ModelException("onAnyOf() requires at least 2 candidate machines");
+        }
         this.machines = List.copyOf(Arrays.asList(machines));
         return this;
     }
 
     public OperationConfig takes(int durationUnits) {
+        if (durationUnits < 1) throw new ModelException("takes() must be >= 1, got: " + durationUnits);
         this.duration = durationUnits;
         return this;
     }

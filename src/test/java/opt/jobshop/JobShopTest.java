@@ -27,7 +27,6 @@ class JobShopTest {
                         .then().on("M3").takes(3))
                 .job("J3", j -> j.operation().on("M3").takes(4)
                         .then().on("M2").takes(3))
-                .minimizeMakespan()
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
@@ -53,7 +52,6 @@ class JobShopTest {
                 .job("J1", j -> j.operation().on("M1").takes(2)
                         .then().on("M1").takes(3)
                         .then().on("M1").takes(4))
-                .minimizeMakespan()
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
@@ -74,7 +72,6 @@ class JobShopTest {
                 .machines("M1", "M2")
                 .job("J1", j -> j.operation().on("M1").takes(2).then().on("M1").takes(3))
                 .job("J2", j -> j.operation().on("M2").takes(4).then().on("M2").takes(3))
-                .minimizeMakespan()
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
@@ -92,7 +89,6 @@ class JobShopTest {
                         .then().on("M1").takes(2))
                 .job("J2", j -> j.operation().on("M2").takes(5)
                         .then().on("M3").takes(3))
-                .minimizeMakespan()
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(schedule.isFeasible()).isTrue();
@@ -118,7 +114,6 @@ class JobShopTest {
                 .job("J1", j -> j.operation().on("M1").takes(3).then().on("M2").takes(2).then().on("M3").takes(2))
                 .job("J2", j -> j.operation().on("M2").takes(2).then().on("M1").takes(4).then().on("M3").takes(3))
                 .job("J3", j -> j.operation().on("M3").takes(4).then().on("M2").takes(3))
-                .minimizeMakespan()
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(schedule.isFeasible()).isTrue();

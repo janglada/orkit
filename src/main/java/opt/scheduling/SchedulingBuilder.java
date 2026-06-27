@@ -51,9 +51,15 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
     }
 
     public SchedulingBuilder shift(String id, Consumer<ShiftConfig> config) {
+        if (shifts.containsKey(id)) {
+            throw new ModelException("Duplicate shift id: " + id);
+        }
         ShiftConfig cfg = new ShiftConfig();
         cfg.id = id;
         config.accept(cfg);
+        if (cfg.day == null)  throw new ModelException("Shift '" + id + "' is missing .on(DayOfWeek)");
+        if (cfg.from == null) throw new ModelException("Shift '" + id + "' is missing .from(LocalTime)");
+        if (cfg.to == null)   throw new ModelException("Shift '" + id + "' is missing .to(LocalTime)");
         shifts.put(id, new ShiftDef(id, cfg.day, cfg.from, cfg.to, cfg.needsCount, cfg.requiredSkill));
         return this;
     }

@@ -47,16 +47,6 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
         return build().solver();
     }
 
-    // ── Synonyms kept for readability in the top-level chain ────────────────
-
-    /**
-     * Sets the single objective (makespan minimization is always implied;
-     * this method exists so the DSL reads naturally).
-     */
-    public JobShopBuilder minimizeMakespan() {
-        return this;
-    }
-
     // ── Problem + Solver ────────────────────────────────────────────────────
 
     private static final class JobShopProblem implements OptimizationProblem<JobShopSchedule> {

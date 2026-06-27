@@ -22,6 +22,7 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
     private final DistanceSource distanceSource;
     private final long droppingPenalty;
     private final RoutingGoal goal;
+    private final double travelSpeedKmh;
 
     private Duration timeLimit = Duration.ofSeconds(30);
     private int workers = 1;
@@ -32,7 +33,8 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
 
     RoutingSolver(String depotId, double depotLat, double depotLon,
                   List<VehicleDef> vehicles, List<StopDef> stops,
-                  DistanceSource distanceSource, long droppingPenalty, RoutingGoal goal) {
+                  DistanceSource distanceSource, long droppingPenalty,
+                  RoutingGoal goal, double travelSpeedKmh) {
         this.depotId = depotId;
         this.depotLat = depotLat;
         this.depotLon = depotLon;
@@ -41,6 +43,7 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
         this.distanceSource = distanceSource;
         this.droppingPenalty = droppingPenalty;
         this.goal = goal;
+        this.travelSpeedKmh = travelSpeedKmh;
     }
 
     @Override public RoutingSolver timeLimit(Duration limit) { this.timeLimit = limit;   return this; }
@@ -63,7 +66,7 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
         return new RoutingCompiler(
                 depotId, depotLat, depotLon,
                 vehicles, stops, distanceSource, droppingPenalty,
-                firstSolutionStrategy, metaheuristic, goal)
+                firstSolutionStrategy, metaheuristic, goal, travelSpeedKmh)
                 .timeLimit(timeLimit)
                 .workers(workers)
                 .seed(seed)
