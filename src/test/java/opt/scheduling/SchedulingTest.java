@@ -332,4 +332,257 @@ class SchedulingTest {
             }
         }
     }
+
+    // ── T-S15: Structural — staffOf and shiftsFor are inverses ──────────────
+
+    @Test
+    void staffOfAndShiftsForAreInverses() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN").costPerHour(30))
+                .employee("bob",   e -> e.skills("RN").costPerHour(40))
+                .employee("carol", e -> e.skills("RN", "ICU").costPerHour(50))
+                .shift("mon-rn",  s -> s.on(DayOfWeek.MONDAY)   .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .shift("tue-icu", s -> s.on(DayOfWeek.TUESDAY)  .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("ICU"))
+                .shift("wed-rn",  s -> s.on(DayOfWeek.WEDNESDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .minimize(totalLaborCost())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.isFeasible()).isTrue();
+
+        // Forward: every shift in shiftsFor(e) must list e in staffOf(shift)
+        for (String emp : List.of("alice", "bob", "carol")) {
+            for (String shift : roster.shiftsFor(emp)) {
+                assertThat(roster.staffOf(shift))
+                        .as("Employee %s appears in shiftsFor but not staffOf(%s)", emp, shift)
+                        .contains(emp);
+            }
+        }
+
+        // Reverse: every employee in staffOf(s) must list s in shiftsFor(employee)
+        for (String shift : List.of("mon-rn", "tue-icu", "wed-rn")) {
+            for (String emp : roster.staffOf(shift)) {
+                assertThat(roster.shiftsFor(emp))
+                        .as("Employee %s appears in staffOf but not shiftsFor(%s)", emp, shift)
+                        .contains(shift);
+            }
+        }
+    }
+
+    // ── T-S16: needs(2) staffs exactly 2 employees on a shift ───────────────
+
+    @Test
+    void needsTwoStaffsExactlyTwoPeople() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN"))
+                .employee("bob",   e -> e.skills("RN"))
+                .employee("carol", e -> e.skills("RN"))
+                .shift("big-shift", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0))
+                        .needs(2).withSkill("RN"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(roster.staffOf("big-shift")).hasSize(2);
+    }
+
+    // ── T-S17: needs(2) with only 1 qualified employee → infeasible ─────────
+
+    @Test
+    void needsTwoWithOnlyOneQualifiedIsInfeasible() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("ICU"))
+                .employee("bob",   e -> e.skills("RN"))  // lacks ICU
+                .shift("icu-shift", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0))
+                        .needs(2).withSkill("ICU"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.status()).isEqualTo(SolveStatus.INFEASIBLE);
+    }
+
+    // ── T-S18: Objective equals sum of cost contributions ───────────────────
+
+    @Test
+    void objectiveEqualsExactCostSum() {
+        // alice (cost=30) → 8h shift, bob (cost=20) → 4h shift
+        // objective = (8*60*30) + (4*60*20) = 14400 + 4800 = 19200
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN").costPerHour(30))
+                .employee("bob",   e -> e.skills("LPN").costPerHour(20))
+                .shift("rn-8h",  s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .shift("lpn-4h", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(12, 0)).needs(1).withSkill("LPN"))
+                .minimize(totalLaborCost())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(roster.objective()).hasValue(8 * 60 * 30.0 + 4 * 60 * 20.0);
+    }
+
+    // ── T-S19: Employee without constraints works shifts on two different days
+
+    @Test
+    void singleEmployeeCanWorkShiftsOnDifferentDays() {
+        // No rest rule, no oneShiftPerDay — employee is free to work both
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN"))
+                .shift("mon", s -> s.on(DayOfWeek.MONDAY)   .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .shift("wed", s -> s.on(DayOfWeek.WEDNESDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(roster.shiftsFor("alice")).containsExactlyInAnyOrder("mon", "wed");
+    }
+
+    // ── T-S20: Overnight shift duration counted correctly for maxHoursPerWeek
+
+    @Test
+    void overnightShiftDurationCountedCorrectly() {
+        // 23:00–07:00 = 8 hours; employee with maxHoursPerWeek=8 should work exactly 1
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN").maxHoursPerWeek(8))
+                .employee("bob",   e -> e.skills("RN"))
+                .shift("night", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(23, 0)).to(LocalTime.of(7, 0)).needs(1).withSkill("RN"))
+                .shift("day",   s -> s.on(DayOfWeek.TUESDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.isFeasible()).isTrue();
+        // alice is capped at 8h; the overnight shift is exactly 8h, so she can work it,
+        // but then she cannot work the Tuesday day shift (would exceed 8h total).
+        assertThat(roster.shiftsFor("alice").size()).isLessThanOrEqualTo(1);
+    }
+
+    // ── T-S21: Duplicate shift id throws ModelException ─────────────────────
+
+    @Test
+    void duplicateShiftIdThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.scheduling()
+                        .horizon(MON, 7)
+                        .employee("alice", e -> e.skills("RN"))
+                        .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1))
+                        .shift("s", s -> s.on(DayOfWeek.TUESDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1))
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class).hasMessageContaining("s");
+    }
+
+    // ── T-S22: Shift missing .on() throws ModelException at builder time ─────
+
+    @Test
+    void shiftMissingDayThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.scheduling()
+                        .horizon(MON, 7)
+                        .employee("alice", e -> e.skills("RN"))
+                        .shift("s", s -> s.from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1))
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class).hasMessageContaining("s");
+    }
+
+    // ── T-S23: Shift missing .from() throws ModelException at builder time ───
+
+    @Test
+    void shiftMissingFromThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.scheduling()
+                        .horizon(MON, 7)
+                        .employee("alice", e -> e.skills("RN"))
+                        .shift("s", s -> s.on(DayOfWeek.MONDAY).to(LocalTime.of(16, 0)).needs(1))
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class).hasMessageContaining("s");
+    }
+
+    // ── T-S24: needs(0) throws ModelException ───────────────────────────────
+
+    @Test
+    void needsZeroThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.scheduling()
+                        .horizon(MON, 7)
+                        .employee("alice", e -> e.skills("RN"))
+                        .shift("s", s -> s.on(DayOfWeek.MONDAY)
+                                .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(0))
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class);
+    }
+
+    // ── T-S25: costPerHour(-1) throws ModelException ─────────────────────────
+
+    @Test
+    void negativeCostPerHourThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.scheduling()
+                        .horizon(MON, 7)
+                        .employee("alice", e -> e.skills("RN").costPerHour(-1))
+                        .shift("s", s -> s.on(DayOfWeek.MONDAY)
+                                .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1))
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class).hasMessageContaining("-1");
+    }
+
+    // ── T-S26: runtime() is non-negative ─────────────────────────────────────
+
+    @Test
+    void runtimeIsNonNegative() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN"))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.runtime().isNegative()).isFalse();
+    }
+
+    // ── T-S27: Employee with multiple skills covers both ICU and RN shifts ───
+
+    @Test
+    void multiSkillEmployeeCoversBothShiftTypes() {
+        // carol has both ICU and RN; she's the only one who can cover the ICU shift;
+        // alice (RN only) covers the RN shift.
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN").costPerHour(30))
+                .employee("carol", e -> e.skills("RN", "ICU").costPerHour(50))
+                .shift("icu-shift", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("ICU"))
+                .shift("rn-shift",  s -> s.on(DayOfWeek.TUESDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .minimize(totalLaborCost())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(roster.staffOf("icu-shift")).containsExactly("carol"); // only one qualified
+        assertThat(roster.staffOf("rn-shift")).containsExactly("alice");  // cheaper
+    }
+
+    // ── T-S28: All assignments have non-null date, employee, and shift ────────
+
+    @Test
+    void allAssignmentFieldsAreNonNull() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN"))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.isFeasible()).isTrue();
+        for (ShiftAssignment a : roster.assignments()) {
+            assertThat(a.employee()).isNotNull();
+            assertThat(a.shift()).isNotNull();
+            assertThat(a.date()).isNotNull();
+            assertThat(a.start()).isNotNull();
+            assertThat(a.end()).isNotNull();
+        }
+    }
 }
