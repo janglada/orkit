@@ -1,0 +1,328 @@
+package opt.scheduling.internal;
+
+import com.google.ortools.sat.*;
+import opt.ModelException;
+import opt.SolveStatus;
+import opt.scheduling.*;
+
+import java.time.Duration;
+import java.time.LocalDate;
+import java.util.*;
+
+/**
+ * Compiles a scheduling model description into CP-SAT and runs it.
+ * All CP-SAT types are confined to this package.
+ */
+public final class CpSatSchedulingSolver {
+
+    private final List<EmployeeDef> employees;
+    private final List<ShiftDef> shifts;
+    private final LocalDate horizonStart;
+    private final int horizonDays;
+    private final List<Rule> rules;
+    private final List<SoftGoal> softGoals;
+    private final ObjectiveGoal objective;
+
+    private long timeLimitSeconds = 60;
+    private int workers = 1;
+    private long seed = 0;
+    private boolean verbose = false;
+
+    public CpSatSchedulingSolver(List<EmployeeDef> employees,
+                                 List<ShiftDef> shifts,
+                                 LocalDate horizonStart,
+                                 int horizonDays,
+                                 List<Rule> rules,
+                                 List<SoftGoal> softGoals,
+                                 ObjectiveGoal objective) {
+        this.employees = List.copyOf(employees);
+        this.shifts = List.copyOf(shifts);
+        this.horizonStart = horizonStart;
+        this.horizonDays = horizonDays;
+        this.rules = List.copyOf(rules);
+        this.softGoals = List.copyOf(softGoals);
+        this.objective = objective;
+    }
+
+    public CpSatSchedulingSolver timeLimit(Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    public CpSatSchedulingSolver workers(int n)            { this.workers = n;                           return this; }
+    public CpSatSchedulingSolver seed(long s)              { this.seed = s;                              return this; }
+    public CpSatSchedulingSolver verbose(boolean v)        { this.verbose = v;                           return this; }
+
+    public EmployeeRosterResult solve() {
+        validate();
+
+        int E = employees.size();
+        int S = shifts.size();
+
+        CpModel model = new CpModel();
+
+        // x[e][s] = 1 if employee e is assigned to shift s
+        BoolVar[][] x = new BoolVar[E][S];
+        for (int e = 0; e < E; e++) {
+            for (int s = 0; s < S; s++) {
+                x[e][s] = model.newBoolVar("x_" + e + "_" + s);
+            }
+        }
+
+        // Availability and skill: fix impossible assignments to 0
+        for (int e = 0; e < E; e++) {
+            EmployeeDef emp = employees.get(e);
+            for (int s = 0; s < S; s++) {
+                ShiftDef shift = shifts.get(s);
+                if (!emp.isAvailableOn(shift.day()) || !emp.hasSkill(shift.requiredSkill())) {
+                    model.addEquality(x[e][s], 0L);
+                }
+            }
+        }
+
+        // Staffing requirements: for each shift, sum of qualified employees == needs
+        for (int s = 0; s < S; s++) {
+            ShiftDef shift = shifts.get(s);
+            LinearExprBuilder expr = LinearExpr.newBuilder();
+            for (int e = 0; e < E; e++) {
+                EmployeeDef emp = employees.get(e);
+                if (emp.isAvailableOn(shift.day()) && emp.hasSkill(shift.requiredSkill())) {
+                    expr.add(x[e][s]);
+                }
+            }
+            model.addEquality(expr, shift.needsCount());
+        }
+
+        // Max hours per week
+        for (int e = 0; e < E; e++) {
+            EmployeeDef emp = employees.get(e);
+            if (emp.maxHoursPerWeek() > 0) {
+                BoolVar[] vars = new BoolVar[S];
+                long[] durations = new long[S];
+                for (int s = 0; s < S; s++) {
+                    vars[s] = x[e][s];
+                    durations[s] = shifts.get(s).durationMinutes();
+                }
+                model.addLinearConstraint(
+                        buildWeightedSum(vars, durations),
+                        0, (long) emp.maxHoursPerWeek() * 60);
+            }
+        }
+
+        // Hard rules
+        for (Rule rule : rules) {
+            switch (rule) {
+                case Rule.OneShiftPerEmployeePerDay r -> applyOneShiftPerDay(model, x, E, S);
+                case Rule.MinRestBetweenShifts r      -> applyMinRest(model, x, E, S, r);
+                case Rule.MaxConsecutiveWorkDays r    -> applyMaxConsecutiveWorkDays(model, x, E, S, r);
+            }
+        }
+
+        // Build objective expression
+        LinearExprBuilder objExpr = LinearExpr.newBuilder();
+        boolean hasObjective = false;
+
+        if (objective instanceof ObjectiveGoal.MinimizeTotalLaborCost) {
+            for (int e = 0; e < E; e++) {
+                int rate = employees.get(e).costPerHour();
+                if (rate > 0) {
+                    for (int s = 0; s < S; s++) {
+                        long minuteCost = (long) shifts.get(s).durationMinutes() * rate;
+                        objExpr.addTerm(x[e][s], minuteCost);
+                    }
+                }
+            }
+            hasObjective = true;
+        }
+
+        // Soft goals — add penalty/reward terms scaled so they complement the hard objective
+        for (SoftGoal goal : softGoals) {
+            switch (goal) {
+                case SoftGoal.BalanceWorkloadAcrossEmployees g ->
+                        hasObjective |= applyBalanceGoal(model, x, E, S, objExpr);
+                case SoftGoal.HonorEmployeePreferences g ->
+                        hasObjective |= applyPreferencesGoal(model, x, E, S, objExpr);
+            }
+        }
+
+        if (hasObjective) {
+            model.minimize(objExpr);
+        }
+
+        // Solve
+        CpSolver solver = new CpSolver();
+        solver.getParameters().setMaxTimeInSeconds(timeLimitSeconds);
+        solver.getParameters().setNumWorkers(workers);
+        solver.getParameters().setRandomSeed((int) seed);
+        solver.getParameters().setLogSearchProgress(verbose);
+
+        long startMs = System.currentTimeMillis();
+        CpSolverStatus cpStatus = solver.solve(model);
+        Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
+
+        SolveStatus status = mapStatus(cpStatus);
+        boolean feasible = status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE;
+
+        List<opt.scheduling.ShiftAssignment> assignments = new ArrayList<>();
+        if (feasible) {
+            for (int e = 0; e < E; e++) {
+                EmployeeDef emp = employees.get(e);
+                for (int s = 0; s < S; s++) {
+                    if (solver.booleanValue(x[e][s])) {
+                        ShiftDef shift = shifts.get(s);
+                        LocalDate date = shift.dateIn(horizonStart, horizonDays);
+                        assignments.add(new opt.scheduling.ShiftAssignment(
+                                emp.id(), shift.id(), date, shift.from(), shift.to()));
+                    }
+                }
+            }
+        }
+
+        OptionalDouble objectiveValue = (hasObjective && feasible)
+                ? OptionalDouble.of(solver.objectiveValue())
+                : OptionalDouble.empty();
+
+        return new EmployeeRosterResult(status, objectiveValue, runtime, assignments);
+    }
+
+    // ── Soft goal helpers ───────────────────────────────────────────────────
+
+    private boolean applyBalanceGoal(CpModel model, BoolVar[][] x, int E, int S, LinearExprBuilder objExpr) {
+        int totalMaxMinutes = shifts.stream().mapToInt(ShiftDef::durationMinutes).sum();
+        if (totalMaxMinutes == 0) return false;
+
+        IntVar maxLoad = model.newIntVar(0, totalMaxMinutes, "maxLoad");
+        IntVar minLoad = model.newIntVar(0, totalMaxMinutes, "minLoad");
+
+        for (int e = 0; e < E; e++) {
+            BoolVar[] vars = new BoolVar[S];
+            long[] durations = new long[S];
+            for (int s = 0; s < S; s++) {
+                vars[s] = x[e][s];
+                durations[s] = shifts.get(s).durationMinutes();
+            }
+            LinearExpr empLoad = buildWeightedSum(vars, durations);
+            model.addGreaterOrEqual(maxLoad, empLoad);
+            model.addLessOrEqual(minLoad, empLoad);
+        }
+
+        IntVar imbalance = model.newIntVar(0, totalMaxMinutes, "imbalance");
+        // imbalance = maxLoad - minLoad
+        model.addEquality(imbalance,
+                LinearExpr.newBuilder().add(maxLoad).addTerm(minLoad, -1L).build());
+        objExpr.addTerm(imbalance, 10L); // penalize imbalance
+        return true;
+    }
+
+    private boolean applyPreferencesGoal(CpModel model, BoolVar[][] x, int E, int S, LinearExprBuilder objExpr) {
+        boolean added = false;
+        for (int e = 0; e < E; e++) {
+            Set<String> prefs = employees.get(e).preferredShifts();
+            if (prefs.isEmpty()) continue;
+            for (int s = 0; s < S; s++) {
+                if (prefs.contains(shifts.get(s).id())) {
+                    // Reward (subtract) when preference is satisfied
+                    objExpr.addTerm(x[e][s], -5L);
+                    added = true;
+                }
+            }
+        }
+        return added;
+    }
+
+    // ── Rule implementations ────────────────────────────────────────────────
+
+    private void applyOneShiftPerDay(CpModel model, BoolVar[][] x, int E, int S) {
+        Map<java.time.DayOfWeek, List<Integer>> byDay = new LinkedHashMap<>();
+        for (int s = 0; s < S; s++) {
+            byDay.computeIfAbsent(shifts.get(s).day(), k -> new ArrayList<>()).add(s);
+        }
+        for (int e = 0; e < E; e++) {
+            for (List<Integer> dayShifts : byDay.values()) {
+                if (dayShifts.size() > 1) {
+                    LinearExprBuilder sum = LinearExpr.newBuilder();
+                    for (int s : dayShifts) sum.add(x[e][s]);
+                    model.addLinearConstraint(sum, 0, 1);
+                }
+            }
+        }
+    }
+
+    private void applyMinRest(CpModel model, BoolVar[][] x, int E, int S, Rule.MinRestBetweenShifts rule) {
+        int minMinutes = (int) rule.minRest().toMinutes();
+        for (int e = 0; e < E; e++) {
+            for (int s1 = 0; s1 < S; s1++) {
+                for (int s2 = s1 + 1; s2 < S; s2++) {
+                    if (shifts.get(s1).tooCloseWith(shifts.get(s2), minMinutes)) {
+                        model.addLinearConstraint(
+                                LinearExpr.newBuilder().add(x[e][s1]).add(x[e][s2]).build(), 0, 1);
+                    }
+                }
+            }
+        }
+    }
+
+    private void applyMaxConsecutiveWorkDays(CpModel model, BoolVar[][] x, int E, int S,
+                                             Rule.MaxConsecutiveWorkDays rule) {
+        int maxDays = rule.days();
+        Map<java.time.DayOfWeek, List<Integer>> byDay = new LinkedHashMap<>();
+        for (int s = 0; s < S; s++) {
+            byDay.computeIfAbsent(shifts.get(s).day(), k -> new ArrayList<>()).add(s);
+        }
+        List<java.time.DayOfWeek> orderedDays = new ArrayList<>();
+        for (int i = 0; i < horizonDays; i++) {
+            orderedDays.add(horizonStart.plusDays(i).getDayOfWeek());
+        }
+        int windowSize = maxDays + 1;
+        for (int e = 0; e < E; e++) {
+            for (int start = 0; start <= orderedDays.size() - windowSize; start++) {
+                LinearExprBuilder window = LinearExpr.newBuilder();
+                for (int d = start; d < start + windowSize; d++) {
+                    List<Integer> dayShifts = byDay.getOrDefault(orderedDays.get(d), List.of());
+                    for (int s : dayShifts) window.add(x[e][s]);
+                }
+                model.addLinearConstraint(window, 0, maxDays);
+            }
+        }
+    }
+
+    // ── Validation ──────────────────────────────────────────────────────────
+
+    /** Builds a weighted-sum LinearExpr from BoolVars and their coefficients. */
+    private static LinearExpr buildWeightedSum(BoolVar[] vars, long[] coefficients) {
+        LinearExprBuilder builder = LinearExpr.newBuilder();
+        for (int i = 0; i < vars.length; i++) {
+            builder.addTerm(vars[i], coefficients[i]);
+        }
+        return builder.build();
+    }
+
+    private void validate() {
+        if (employees.isEmpty()) throw new ModelException("At least one employee is required.");
+        if (shifts.isEmpty())    throw new ModelException("At least one shift is required.");
+        Set<String> employeeIds = new HashSet<>();
+        for (EmployeeDef e : employees) {
+            if (!employeeIds.add(e.id())) throw new ModelException("Duplicate employee id: " + e.id());
+        }
+        Set<String> shiftIds = new HashSet<>();
+        for (ShiftDef s : shifts) {
+            if (!shiftIds.add(s.id())) throw new ModelException("Duplicate shift id: " + s.id());
+            if (s.day() == null || s.from() == null || s.to() == null) {
+                throw new ModelException("Shift '" + s.id() + "' is missing day, from, or to.");
+            }
+        }
+    }
+
+    private SolveStatus mapStatus(CpSolverStatus s) {
+        return switch (s) {
+            case OPTIMAL       -> SolveStatus.OPTIMAL;
+            case FEASIBLE      -> SolveStatus.FEASIBLE;
+            case INFEASIBLE    -> SolveStatus.INFEASIBLE;
+            case MODEL_INVALID -> SolveStatus.MODEL_INVALID;
+            default            -> SolveStatus.UNKNOWN;
+        };
+    }
+
+    public record EmployeeRosterResult(
+            SolveStatus status,
+            OptionalDouble objective,
+            Duration runtime,
+            List<opt.scheduling.ShiftAssignment> assignments
+    ) {}
+}
