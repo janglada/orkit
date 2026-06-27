@@ -46,7 +46,8 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
                 cfg.costPerHour,
                 cfg.availableDays.isEmpty() ? Set.of() : Set.copyOf(cfg.availableDays),
                 cfg.maxHoursPerWeek,
-                Set.copyOf(cfg.preferredShifts)));
+                Set.copyOf(cfg.preferredShifts),
+                Set.copyOf(cfg.blockedDates)));
         return this;
     }
 

@@ -65,12 +65,18 @@ public final class CpSatSchedulingSolver {
             }
         }
 
+        // Pre-compute the concrete calendar date for each shift (needed for blocked-date checks).
+        LocalDate[] shiftDate = new LocalDate[S];
+        for (int s = 0; s < S; s++) {
+            shiftDate[s] = shifts.get(s).dateIn(horizonStart, horizonDays);
+        }
+
         // Availability and skill: fix impossible assignments to 0
         for (int e = 0; e < E; e++) {
             EmployeeDef emp = employees.get(e);
             for (int s = 0; s < S; s++) {
                 ShiftDef shift = shifts.get(s);
-                if (!emp.isAvailableOn(shift.day()) || !emp.hasSkill(shift.requiredSkill())) {
+                if (!emp.isAvailableOn(shift.day(), shiftDate[s]) || !emp.hasSkill(shift.requiredSkill())) {
                     model.addEquality(x[e][s], 0L);
                 }
             }
@@ -82,7 +88,7 @@ public final class CpSatSchedulingSolver {
             LinearExprBuilder expr = LinearExpr.newBuilder();
             for (int e = 0; e < E; e++) {
                 EmployeeDef emp = employees.get(e);
-                if (emp.isAvailableOn(shift.day()) && emp.hasSkill(shift.requiredSkill())) {
+                if (emp.isAvailableOn(shift.day(), shiftDate[s]) && emp.hasSkill(shift.requiredSkill())) {
                     expr.add(x[e][s]);
                 }
             }
