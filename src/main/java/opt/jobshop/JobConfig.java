@@ -29,8 +29,8 @@ public final class JobConfig {
         committed.add(new OperationDef(committed.size(), op.machines(), op.duration()));
     }
 
-    /** Called by the builder after the lambda returns to finalize the last pending operation. */
-    void finalize_() {
+    /** Called by the builder after the lambda returns to commit the last pending operation. */
+    void commitPending() {
         if (activeOp != null) {
             commitOperation(activeOp);
             activeOp = null;

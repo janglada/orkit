@@ -3,6 +3,7 @@ package opt.scheduling;
 import opt.ModelException;
 
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 /** Fluent configurator for a shift, used inside the lambda passed to
@@ -11,6 +12,7 @@ public final class ShiftConfig {
 
     String id;
     DayOfWeek day;
+    LocalDate specificDate;
     LocalTime from;
     LocalTime to;
     int needsCount = 1;
@@ -18,8 +20,19 @@ public final class ShiftConfig {
 
     ShiftConfig() {}
 
+    /**
+     * Places the shift on the first date in the horizon whose day-of-week matches.
+     * For recurring weekly shifts across a multi-week horizon, define one shift per
+     * occurrence or use {@link #on(LocalDate)} to target a specific calendar date.
+     */
     public ShiftConfig on(DayOfWeek day) {
         this.day = day;
+        return this;
+    }
+
+    /** Places the shift on a specific calendar date, which must fall within the horizon. */
+    public ShiftConfig on(LocalDate date) {
+        this.specificDate = date;
         return this;
     }
 

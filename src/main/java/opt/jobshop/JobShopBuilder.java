@@ -28,7 +28,7 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
     public JobShopBuilder job(String id, Consumer<JobConfig> config) {
         JobConfig cfg = new JobConfig();
         config.accept(cfg);
-        cfg.finalize_();
+        cfg.commitPending();
         if (cfg.committed.isEmpty()) {
             throw new ModelException("Job '" + id + "' must have at least one operation.");
         }

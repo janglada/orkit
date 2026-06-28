@@ -585,4 +585,36 @@ class RoutingTest {
         assertThat(plan.routes().get(0).stops()).containsExactly("only");
         assertThat(plan.routes().get(0).distanceMeters()).isEqualTo(1500);
     }
+
+    // ── T-R26: Over capacity with no dropping is infeasible ─────────────────────
+
+    @Test
+    void overCapacityWithoutDroppingIsInfeasible() {
+        // Single vehicle cap 10, one stop demand 100 — unservable without dropping.
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("depot", 41.390, 2.160)
+                .vehicle("v1", v -> v.capacity(10))
+                .stop("A", s -> s.at(41.400, 2.170).demand(100))
+                .distances(DistanceSource.haversine())
+                .minimize(Goals.totalDistance())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(plan.status()).isEqualTo(SolveStatus.INFEASIBLE);
+    }
+
+    // ── T-R27: Per-vehicle max distance too small is infeasible ─────────────────
+
+    @Test
+    void maxDistanceTooSmallIsInfeasible() {
+        // Stop ~9.5 km from depot → round trip ~19 km, but vehicle capped at 50 m.
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("depot", 41.390, 2.160)
+                .vehicle("v1", v -> v.capacity(10).maxDistanceMeters(50))
+                .stop("A", s -> s.at(41.500, 2.300).demand(1))
+                .distances(DistanceSource.haversine())
+                .minimize(Goals.totalDistance())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(plan.status()).isEqualTo(SolveStatus.INFEASIBLE);
+    }
 }

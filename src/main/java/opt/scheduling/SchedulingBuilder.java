@@ -58,10 +58,13 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
         ShiftConfig cfg = new ShiftConfig();
         cfg.id = id;
         config.accept(cfg);
-        if (cfg.day == null)  throw new ModelException("Shift '" + id + "' is missing .on(DayOfWeek)");
+        if (cfg.day == null && cfg.specificDate == null)
+            throw new ModelException("Shift '" + id + "' is missing .on(DayOfWeek) or .on(LocalDate)");
+        if (cfg.day != null && cfg.specificDate != null)
+            throw new ModelException("Shift '" + id + "' must specify either .on(DayOfWeek) or .on(LocalDate), not both");
         if (cfg.from == null) throw new ModelException("Shift '" + id + "' is missing .from(LocalTime)");
         if (cfg.to == null)   throw new ModelException("Shift '" + id + "' is missing .to(LocalTime)");
-        shifts.put(id, new ShiftDef(id, cfg.day, cfg.from, cfg.to, cfg.needsCount, cfg.requiredSkill));
+        shifts.put(id, new ShiftDef(id, cfg.day, cfg.specificDate, cfg.from, cfg.to, cfg.needsCount, cfg.requiredSkill));
         return this;
     }
 

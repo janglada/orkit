@@ -135,9 +135,11 @@ public final class RoutingCompiler {
         long startMs = System.currentTimeMillis();
         Assignment solution = routing.solveWithParameters(params);
         java.time.Duration runtime = java.time.Duration.ofMillis(System.currentTimeMillis() - startMs);
+        int routingStatus = routing.status();
 
         if (solution == null) {
-            return new RoutingPlan(SolveStatus.INFEASIBLE, OptionalDouble.empty(), runtime,
+            SolveStatus status = mapStatus(routingStatus, false);
+            return new RoutingPlan(status, OptionalDouble.empty(), runtime,
                     List.of(), List.of());
         }
 
@@ -174,8 +176,19 @@ public final class RoutingCompiler {
                 .filter(id -> !visitedStops.contains(id))
                 .collect(Collectors.toList());
 
-        SolveStatus status = SolveStatus.FEASIBLE;
+        SolveStatus status = mapStatus(routingStatus, true);
         return new RoutingPlan(status, OptionalDouble.of(totalDistance), runtime, routes, unassigned);
+    }
+
+    /** Maps the OR-Tools routing status to our {@link SolveStatus}. */
+    private static SolveStatus mapStatus(int routingStatus, boolean hasSolution) {
+        if (routingStatus == RoutingModel.ROUTING_OPTIMAL)    return SolveStatus.OPTIMAL;
+        if (routingStatus == RoutingModel.ROUTING_INFEASIBLE) return SolveStatus.INFEASIBLE;
+        if (hasSolution) return SolveStatus.FEASIBLE;
+        // No solution found.
+        if (routingStatus == RoutingModel.ROUTING_FAIL
+                || routingStatus == RoutingModel.ROUTING_FAIL_TIMEOUT) return SolveStatus.INFEASIBLE;
+        return SolveStatus.UNKNOWN;
     }
 
     // ── Distance matrix ─────────────────────────────────────────────────────

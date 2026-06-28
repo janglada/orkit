@@ -307,7 +307,7 @@ class SchedulingTest {
         for (int i = 0; i < 14; i++) {
             final int day = i;
             builder.shift(names[i], s -> s
-                    .on(twoWeek.plusDays(day).getDayOfWeek())
+                    .on(twoWeek.plusDays(day))
                     .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0))
                     .needs(1).withSkill("X"));
         }
@@ -584,5 +584,41 @@ class SchedulingTest {
             assertThat(a.start()).isNotNull();
             assertThat(a.end()).isNotNull();
         }
+    }
+
+    // ── T-S29: Tunable preference weight overrides vs default cost-dominant behavior ──
+
+    @Test
+    void weightedPreferenceOverridesLaborCost() {
+        // bob costs 10× alice but prefers the shift. A huge preference weight (100_000)
+        // makes the reward outweigh bob's higher labor cost; the default weight (5) does not.
+        // bob cost = 8h*60*100 = 48000; alice = 8h*60*10 = 4800; cost delta = 43200.
+        // weight 100_000 → bob net = 48000 - 100000 = -52000 < alice 4800  (bob wins)
+        // weight 5       → bob net = 48000 - 5     = 47995 > alice 4800  (alice wins)
+        EmployeeRoster preferred = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN").costPerHour(10))
+                .employee("bob",   e -> e.skills("RN").costPerHour(100).prefersShift("s"))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .minimize(totalLaborCost())
+                .prefer(honorEmployeePreferences(100_000))
+                .solver().timeLimit(Duration.ofSeconds(5)).seed(1).solve();
+
+        assertThat(preferred.isFeasible()).isTrue();
+        assertThat(preferred.staffOf("s")).containsExactly("bob");
+
+        EmployeeRoster costDriven = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("RN").costPerHour(10))
+                .employee("bob",   e -> e.skills("RN").costPerHour(100).prefersShift("s"))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .minimize(totalLaborCost())
+                .prefer(honorEmployeePreferences())
+                .solver().timeLimit(Duration.ofSeconds(5)).seed(1).solve();
+
+        assertThat(costDriven.isFeasible()).isTrue();
+        assertThat(costDriven.staffOf("s")).containsExactly("alice");
     }
 }

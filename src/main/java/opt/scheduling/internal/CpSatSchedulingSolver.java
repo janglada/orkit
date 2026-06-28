@@ -7,6 +7,7 @@ import opt.scheduling.*;
 
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -65,18 +66,37 @@ public final class CpSatSchedulingSolver {
             }
         }
 
-        // Pre-compute the concrete calendar date for each shift (needed for blocked-date checks).
+        // Pre-compute the concrete calendar date and 0-based horizon day-index for each shift.
         LocalDate[] shiftDate = new LocalDate[S];
+        int[] shiftDayIdx = new int[S];
         for (int s = 0; s < S; s++) {
-            shiftDate[s] = shifts.get(s).dateIn(horizonStart, horizonDays);
+            ShiftDef shift = shifts.get(s);
+            int idx;
+            if (shift.specificDate() != null) {
+                idx = (int) ChronoUnit.DAYS.between(horizonStart, shift.specificDate());
+                if (idx < 0 || idx >= horizonDays) {
+                    throw new ModelException("Shift '" + shift.id() + "' date " + shift.specificDate()
+                            + " is outside the horizon [" + horizonStart + ", +" + horizonDays + " days)");
+                }
+            } else {
+                idx = horizonDayIndex(shift.day());
+                if (idx < 0) {
+                    throw new ModelException("Shift '" + shift.id() + "' day " + shift.day()
+                            + " does not occur in the horizon");
+                }
+            }
+            shiftDayIdx[s] = idx;
+            shiftDate[s] = horizonStart.plusDays(idx);
         }
 
-        // Availability and skill: fix impossible assignments to 0
+        // Availability and skill: fix impossible assignments to 0.
+        // For a specific-date shift, day() is null — derive the DayOfWeek from the concrete date.
         for (int e = 0; e < E; e++) {
             EmployeeDef emp = employees.get(e);
             for (int s = 0; s < S; s++) {
                 ShiftDef shift = shifts.get(s);
-                if (!emp.isAvailableOn(shift.day(), shiftDate[s]) || !emp.hasSkill(shift.requiredSkill())) {
+                java.time.DayOfWeek dow = shift.day() != null ? shift.day() : shiftDate[s].getDayOfWeek();
+                if (!emp.isAvailableOn(dow, shiftDate[s]) || !emp.hasSkill(shift.requiredSkill())) {
                     model.addEquality(x[e][s], 0L);
                 }
             }
@@ -85,10 +105,11 @@ public final class CpSatSchedulingSolver {
         // Staffing requirements: for each shift, sum of qualified employees == needs
         for (int s = 0; s < S; s++) {
             ShiftDef shift = shifts.get(s);
+            java.time.DayOfWeek dow = shift.day() != null ? shift.day() : shiftDate[s].getDayOfWeek();
             LinearExprBuilder expr = LinearExpr.newBuilder();
             for (int e = 0; e < E; e++) {
                 EmployeeDef emp = employees.get(e);
-                if (emp.isAvailableOn(shift.day(), shiftDate[s]) && emp.hasSkill(shift.requiredSkill())) {
+                if (emp.isAvailableOn(dow, shiftDate[s]) && emp.hasSkill(shift.requiredSkill())) {
                     expr.add(x[e][s]);
                 }
             }
@@ -114,9 +135,9 @@ public final class CpSatSchedulingSolver {
         // Hard rules
         for (Rule rule : rules) {
             switch (rule) {
-                case Rule.OneShiftPerEmployeePerDay r -> applyOneShiftPerDay(model, x, E, S);
-                case Rule.MinRestBetweenShifts r      -> applyMinRest(model, x, E, S, r);
-                case Rule.MaxConsecutiveWorkDays r    -> applyMaxConsecutiveWorkDays(model, x, E, S, r);
+                case Rule.OneShiftPerEmployeePerDay r -> applyOneShiftPerDay(model, x, E, S, shiftDayIdx);
+                case Rule.MinRestBetweenShifts r      -> applyMinRest(model, x, E, S, r, shiftDayIdx);
+                case Rule.MaxConsecutiveWorkDays r    -> applyMaxConsecutiveWorkDays(model, x, E, S, r, shiftDayIdx);
             }
         }
 
@@ -141,9 +162,9 @@ public final class CpSatSchedulingSolver {
         for (SoftGoal goal : softGoals) {
             switch (goal) {
                 case SoftGoal.BalanceWorkloadAcrossEmployees g ->
-                        hasObjective |= applyBalanceGoal(model, x, E, S, objExpr);
+                        hasObjective |= applyBalanceGoal(model, x, E, S, objExpr, g);
                 case SoftGoal.HonorEmployeePreferences g ->
-                        hasObjective |= applyPreferencesGoal(model, x, E, S, objExpr);
+                        hasObjective |= applyPreferencesGoal(model, x, E, S, objExpr, g);
             }
         }
 
@@ -172,7 +193,7 @@ public final class CpSatSchedulingSolver {
                 for (int s = 0; s < S; s++) {
                     if (solver.booleanValue(x[e][s])) {
                         ShiftDef shift = shifts.get(s);
-                        LocalDate date = shift.dateIn(horizonStart, horizonDays);
+                        LocalDate date = shiftDate[s];
                         assignments.add(new opt.scheduling.ShiftAssignment(
                                 emp.id(), shift.id(), date, shift.from(), shift.to()));
                     }
@@ -189,7 +210,8 @@ public final class CpSatSchedulingSolver {
 
     // ── Soft goal helpers ───────────────────────────────────────────────────
 
-    private boolean applyBalanceGoal(CpModel model, BoolVar[][] x, int E, int S, LinearExprBuilder objExpr) {
+    private boolean applyBalanceGoal(CpModel model, BoolVar[][] x, int E, int S, LinearExprBuilder objExpr,
+                                     SoftGoal.BalanceWorkloadAcrossEmployees g) {
         int totalMaxMinutes = shifts.stream().mapToInt(ShiftDef::durationMinutes).sum();
         if (totalMaxMinutes == 0) return false;
 
@@ -212,11 +234,12 @@ public final class CpSatSchedulingSolver {
         // imbalance = maxLoad - minLoad
         model.addEquality(imbalance,
                 LinearExpr.newBuilder().add(maxLoad).addTerm(minLoad, -1L).build());
-        objExpr.addTerm(imbalance, 10L); // penalize imbalance
+        objExpr.addTerm(imbalance, g.weight()); // penalize imbalance
         return true;
     }
 
-    private boolean applyPreferencesGoal(CpModel model, BoolVar[][] x, int E, int S, LinearExprBuilder objExpr) {
+    private boolean applyPreferencesGoal(CpModel model, BoolVar[][] x, int E, int S, LinearExprBuilder objExpr,
+                                         SoftGoal.HonorEmployeePreferences g) {
         boolean added = false;
         for (int e = 0; e < E; e++) {
             Set<String> prefs = employees.get(e).preferredShifts();
@@ -224,7 +247,7 @@ public final class CpSatSchedulingSolver {
             for (int s = 0; s < S; s++) {
                 if (prefs.contains(shifts.get(s).id())) {
                     // Reward (subtract) when preference is satisfied
-                    objExpr.addTerm(x[e][s], -5L);
+                    objExpr.addTerm(x[e][s], -g.weight());
                     added = true;
                 }
             }
@@ -234,10 +257,12 @@ public final class CpSatSchedulingSolver {
 
     // ── Rule implementations ────────────────────────────────────────────────
 
-    private void applyOneShiftPerDay(CpModel model, BoolVar[][] x, int E, int S) {
-        Map<java.time.DayOfWeek, List<Integer>> byDay = new LinkedHashMap<>();
+    private void applyOneShiftPerDay(CpModel model, BoolVar[][] x, int E, int S, int[] shiftDayIdx) {
+        // Group shifts by concrete calendar day-index (0 = horizonStart), not by DayOfWeek.
+        // This is correct for horizons longer than 7 days where the same DayOfWeek repeats.
+        Map<Integer, List<Integer>> byDay = new LinkedHashMap<>();
         for (int s = 0; s < S; s++) {
-            byDay.computeIfAbsent(shifts.get(s).day(), k -> new ArrayList<>()).add(s);
+            byDay.computeIfAbsent(shiftDayIdx[s], k -> new ArrayList<>()).add(s);
         }
         for (int e = 0; e < E; e++) {
             for (List<Integer> dayShifts : byDay.values()) {
@@ -250,13 +275,14 @@ public final class CpSatSchedulingSolver {
         }
     }
 
-    private void applyMinRest(CpModel model, BoolVar[][] x, int E, int S, Rule.MinRestBetweenShifts rule) {
+    private void applyMinRest(CpModel model, BoolVar[][] x, int E, int S, Rule.MinRestBetweenShifts rule,
+                              int[] shiftDayIdx) {
         int minMinutes = (int) rule.minRest().toMinutes();
         // Pre-compute absolute start/end for each shift using its 0-based day index in the horizon.
         int[] absStart = new int[S];
         int[] absEnd   = new int[S];
         for (int s = 0; s < S; s++) {
-            int dayIdx = horizonDayIndex(shifts.get(s).day());
+            int dayIdx = shiftDayIdx[s];
             absStart[s] = shifts.get(s).absoluteStartMinutes(dayIdx);
             absEnd[s]   = shifts.get(s).absoluteEndMinutes(dayIdx);
         }
@@ -277,15 +303,14 @@ public final class CpSatSchedulingSolver {
     }
 
     private void applyMaxConsecutiveWorkDays(CpModel model, BoolVar[][] x, int E, int S,
-                                             Rule.MaxConsecutiveWorkDays rule) {
+                                             Rule.MaxConsecutiveWorkDays rule, int[] shiftDayIdx) {
         int maxDays = rule.days();
         // Index by calendar-day position (0 = horizonStart), not by DayOfWeek.
         // This is correct for horizons longer than 7 days where the same DayOfWeek repeats.
         List<List<Integer>> byIndex = new ArrayList<>(horizonDays);
         for (int i = 0; i < horizonDays; i++) byIndex.add(new ArrayList<>());
         for (int s = 0; s < S; s++) {
-            int idx = horizonDayIndex(shifts.get(s).day());
-            if (idx >= 0) byIndex.get(idx).add(s);
+            byIndex.get(shiftDayIdx[s]).add(s);
         }
         int windowSize = maxDays + 1;
         for (int e = 0; e < E; e++) {
@@ -328,8 +353,11 @@ public final class CpSatSchedulingSolver {
         Set<String> shiftIds = new HashSet<>();
         for (ShiftDef s : shifts) {
             if (!shiftIds.add(s.id())) throw new ModelException("Duplicate shift id: " + s.id());
-            if (s.day() == null || s.from() == null || s.to() == null) {
-                throw new ModelException("Shift '" + s.id() + "' is missing day, from, or to.");
+            if (s.day() == null && s.specificDate() == null) {
+                throw new ModelException("Shift '" + s.id() + "' is missing .on(DayOfWeek) or .on(LocalDate).");
+            }
+            if (s.from() == null || s.to() == null) {
+                throw new ModelException("Shift '" + s.id() + "' is missing from or to.");
             }
         }
     }

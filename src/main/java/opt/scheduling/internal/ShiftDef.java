@@ -7,6 +7,7 @@ import java.time.LocalTime;
 public record ShiftDef(
         String id,
         DayOfWeek day,
+        LocalDate specificDate,
         LocalTime from,
         LocalTime to,
         int needsCount,
@@ -35,7 +36,8 @@ public record ShiftDef(
         return absoluteStartMinutes(dayIndex) + durationMinutes();
     }
 
-    /** Returns the concrete date for this shift within the given horizon, or null if day not in horizon. */
+    /** Returns the concrete date for this shift within the given horizon, or null if day not in horizon.
+     *  Note: this returns the first occurrence of {@link #day()} and does not consider {@link #specificDate()}. */
     public LocalDate dateIn(LocalDate horizonStart, int horizonDays) {
         for (int i = 0; i < horizonDays; i++) {
             LocalDate d = horizonStart.plusDays(i);

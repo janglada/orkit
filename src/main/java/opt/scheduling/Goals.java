@@ -7,8 +7,16 @@ public final class Goals {
         return new SoftGoal.BalanceWorkloadAcrossEmployees();
     }
 
+    public static SoftGoal balanceWorkloadAcrossEmployees(long weight) {
+        return new SoftGoal.BalanceWorkloadAcrossEmployees(weight);
+    }
+
     public static SoftGoal honorEmployeePreferences() {
         return new SoftGoal.HonorEmployeePreferences();
+    }
+
+    public static SoftGoal honorEmployeePreferences(long rewardWeight) {
+        return new SoftGoal.HonorEmployeePreferences(rewardWeight);
     }
 
     public static ObjectiveGoal totalLaborCost() {
