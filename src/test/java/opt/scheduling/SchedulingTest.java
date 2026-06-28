@@ -621,4 +621,102 @@ class SchedulingTest {
         assertThat(costDriven.isFeasible()).isTrue();
         assertThat(costDriven.staffOf("s")).containsExactly("alice");
     }
+
+    // ── T-S30: maxShiftsPerWeek caps assignments in any rolling 7-day window ──
+
+    @Test
+    void maxShiftsPerWeekCapsRollingWindow() {
+        // 14-day horizon, 5 employees, one day shift per day (needs 1), at most 2 shifts
+        // per any rolling 7-day window per employee. 14 assignments spread over 5 people
+        // is feasible (5 × 2 = 10 ≥ 7 per week), but the rolling window makes spreading tight.
+        LocalDate twoWeek = MON;
+        var builder = Optimize.scheduling().horizon(twoWeek, 14);
+        builder.employee("a", e -> e.skills("X"))
+               .employee("b", e -> e.skills("X"))
+               .employee("c", e -> e.skills("X"))
+               .employee("d", e -> e.skills("X"))
+               .employee("e", e -> e.skills("X"));
+        String[] names = new String[14];
+        for (int i = 0; i < 14; i++) {
+            names[i] = "s" + i;
+            final int day = i;
+            builder.shift(names[i], s -> s
+                    .on(twoWeek.plusDays(day))
+                    .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0))
+                    .needs(1).withSkill("X"));
+        }
+        builder.constrain(maxShiftsPerWeek(2));
+
+        EmployeeRoster roster = builder.solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(roster.isFeasible()).isTrue();
+        // For each employee, every 7-day rolling window must hold ≤ 2 of their shifts.
+        for (String emp : List.of("a", "b", "c", "d", "e")) {
+            List<Integer> dayIndices = roster.shiftsFor(emp).stream()
+                    .map(name -> Integer.parseInt(name.substring(1)))
+                    .sorted()
+                    .toList();
+            for (int start = 0; start + 7 <= 14; start++) {
+                int lo = start, hi = start + 7;
+                long count = dayIndices.stream().filter(d -> d >= lo && d < hi).count();
+                assertThat(count)
+                        .as("%s has %d shifts in days [%d,%d) — maxShiftsPerWeek(2) violated", emp, count, lo, hi)
+                        .isLessThanOrEqualTo(2);
+            }
+        }
+    }
+
+    // ── T-S31: maxConsecutiveNightShifts limits consecutive overnight shifts ───
+
+    @Test
+    void maxConsecutiveNightShiftsCapsConsecutiveOvernights() {
+        // 5 consecutive overnight shifts (22:00–06:00, spanning midnight), 2 employees,
+        // at most 2 consecutive nights each. Feasible by alternating pairs (a a b b a).
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> e.skills("RN"))
+                .employee("b", e -> e.skills("RN"))
+                .shift("n1", s -> s.on(DayOfWeek.MONDAY)   .from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).needs(1).withSkill("RN"))
+                .shift("n2", s -> s.on(DayOfWeek.TUESDAY)  .from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).needs(1).withSkill("RN"))
+                .shift("n3", s -> s.on(DayOfWeek.WEDNESDAY).from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).needs(1).withSkill("RN"))
+                .shift("n4", s -> s.on(DayOfWeek.THURSDAY) .from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).needs(1).withSkill("RN"))
+                .shift("n5", s -> s.on(DayOfWeek.FRIDAY)   .from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).needs(1).withSkill("RN"))
+                .constrain(maxConsecutiveNightShifts(2))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.isFeasible()).isTrue();
+        // No employee may work 3+ consecutive nights.
+        List<String> order = List.of("n1", "n2", "n3", "n4", "n5");
+        for (String emp : List.of("a", "b")) {
+            List<String> nights = roster.shiftsFor(emp);
+            int consecutive = 0;
+            for (String s : order) {
+                if (nights.contains(s)) {
+                    consecutive++;
+                    assertThat(consecutive)
+                            .as("%s worked more than 2 consecutive night shifts", emp)
+                            .isLessThanOrEqualTo(2);
+                } else {
+                    consecutive = 0;
+                }
+            }
+        }
+    }
+
+    // ── T-S32: maxConsecutiveNightShifts infeasible when impossible ───────────
+
+    @Test
+    void maxConsecutiveNightShiftsInfeasibleWhenImpossible() {
+        // One employee, 3 consecutive nights, cap of 2 → cannot satisfy all three shifts.
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> e.skills("RN"))
+                .shift("n1", s -> s.on(DayOfWeek.MONDAY)   .from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).needs(1).withSkill("RN"))
+                .shift("n2", s -> s.on(DayOfWeek.TUESDAY)  .from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).needs(1).withSkill("RN"))
+                .shift("n3", s -> s.on(DayOfWeek.WEDNESDAY).from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).needs(1).withSkill("RN"))
+                .constrain(maxConsecutiveNightShifts(2))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.status()).isEqualTo(SolveStatus.INFEASIBLE);
+    }
 }

@@ -17,5 +17,13 @@ public final class Rules {
         return new Rule.OneShiftPerEmployeePerDay();
     }
 
+    public static Rule maxShiftsPerWeek(int maxShifts) {
+        return new Rule.MaxShiftsPerWeek(maxShifts);
+    }
+
+    public static Rule maxConsecutiveNightShifts(int maxNights) {
+        return new Rule.MaxConsecutiveNightShifts(maxNights);
+    }
+
     private Rules() {}
 }

@@ -20,6 +20,11 @@ public record ShiftDef(
         return end > start ? end - start : (24 * 60 - start) + end;
     }
 
+    /** A night shift is one that spans midnight, i.e. {@code to} is strictly before {@code from}. */
+    public boolean isNightShift() {
+        return to.isBefore(from);
+    }
+
     /**
      * Start time in absolute minutes from the beginning of the horizon.
      * @param dayIndex 0-based position of this shift's day within the horizon

@@ -138,6 +138,8 @@ public final class CpSatSchedulingSolver {
                 case Rule.OneShiftPerEmployeePerDay r -> applyOneShiftPerDay(model, x, E, S, shiftDayIdx);
                 case Rule.MinRestBetweenShifts r      -> applyMinRest(model, x, E, S, r, shiftDayIdx);
                 case Rule.MaxConsecutiveWorkDays r    -> applyMaxConsecutiveWorkDays(model, x, E, S, r, shiftDayIdx);
+                case Rule.MaxShiftsPerWeek r          -> applyMaxShiftsPerWeek(model, x, E, S, r, shiftDayIdx);
+                case Rule.MaxConsecutiveNightShifts r -> applyMaxConsecutiveNightShifts(model, x, E, S, r, shiftDayIdx);
             }
         }
 
@@ -320,6 +322,52 @@ public final class CpSatSchedulingSolver {
                     for (int s : byIndex.get(d)) window.add(x[e][s]);
                 }
                 model.addLinearConstraint(window, 0, maxDays);
+            }
+        }
+    }
+
+    private void applyMaxShiftsPerWeek(CpModel model, BoolVar[][] x, int E, int S,
+                                       Rule.MaxShiftsPerWeek rule, int[] shiftDayIdx) {
+        int maxShifts = rule.maxShifts();
+        int windowSize = Math.min(7, horizonDays);
+        if (windowSize <= 0) return;
+        // Group shift indices by their 0-based horizon day.
+        List<List<Integer>> byIndex = new ArrayList<>(horizonDays);
+        for (int i = 0; i < horizonDays; i++) byIndex.add(new ArrayList<>());
+        for (int s = 0; s < S; s++) {
+            byIndex.get(shiftDayIdx[s]).add(s);
+        }
+        // Every full 7-day (or horizon-wide when shorter) rolling window caps the count.
+        for (int e = 0; e < E; e++) {
+            for (int start = 0; start + windowSize <= horizonDays; start++) {
+                LinearExprBuilder window = LinearExpr.newBuilder();
+                for (int d = start; d < start + windowSize; d++) {
+                    for (int s : byIndex.get(d)) window.add(x[e][s]);
+                }
+                model.addLinearConstraint(window, 0, maxShifts);
+            }
+        }
+    }
+
+    private void applyMaxConsecutiveNightShifts(CpModel model, BoolVar[][] x, int E, int S,
+                                                Rule.MaxConsecutiveNightShifts rule, int[] shiftDayIdx) {
+        int maxNights = rule.maxNights();
+        // Identify night shifts (span midnight) and group them by horizon day.
+        List<List<Integer>> nightByIndex = new ArrayList<>(horizonDays);
+        for (int i = 0; i < horizonDays; i++) nightByIndex.add(new ArrayList<>());
+        for (int s = 0; s < S; s++) {
+            if (shifts.get(s).isNightShift()) {
+                nightByIndex.get(shiftDayIdx[s]).add(s);
+            }
+        }
+        int windowSize = maxNights + 1;
+        for (int e = 0; e < E; e++) {
+            for (int start = 0; start + windowSize <= horizonDays; start++) {
+                LinearExprBuilder window = LinearExpr.newBuilder();
+                for (int d = start; d < start + windowSize; d++) {
+                    for (int s : nightByIndex.get(d)) window.add(x[e][s]);
+                }
+                model.addLinearConstraint(window, 0, maxNights);
             }
         }
     }
