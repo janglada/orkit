@@ -1,8 +1,11 @@
 package opt;
 
 import com.google.ortools.Loader;
+import opt.booking.BookingBuilder;
+import opt.cutting.CuttingBuilder;
 import opt.jobshop.JobShopBuilder;
 import opt.knapsack.MultipleKnapsackBuilder;
+import opt.packing.PackingBuilder;
 import opt.routing.RoutingBuilder;
 import opt.scheduling.SchedulingBuilder;
 
@@ -36,6 +39,21 @@ public final class Optimize {
     /** Creates a builder for multiple-knapsack assignment problems. */
     public static MultipleKnapsackBuilder multipleKnapsack() {
         return new MultipleKnapsackBuilder();
+    }
+
+    /** Creates a builder for container-loading / 3D bin packing problems. */
+    public static PackingBuilder packing() {
+        return new PackingBuilder();
+    }
+
+    /** Creates a builder for resource-booking / appointment-scheduling problems. */
+    public static BookingBuilder booking() {
+        return new BookingBuilder();
+    }
+
+    /** Creates a builder for 1D cutting stock problems. */
+    public static CuttingBuilder cuttingStock() {
+        return new CuttingBuilder();
     }
 
     private Optimize() {}
