@@ -22,6 +22,7 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
     private final Set<String> itemIds = new HashSet<>();
     private final Set<String> binIds = new HashSet<>();
 
+    /** Declares a knapsack (bin) with the given unique id and configures it via the {@link BinConfig} lambda. */
     public MultipleKnapsackBuilder bin(String id, Consumer<BinConfig> config) {
         if (!binIds.add(id)) {
             throw new ModelException("Duplicate bin id: '" + id + "'.");
@@ -35,6 +36,7 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
         return this;
     }
 
+    /** Declares an item with the given unique id and configures it via the {@link ItemConfig} lambda. */
     public MultipleKnapsackBuilder item(String id, Consumer<ItemConfig> config) {
         if (!itemIds.add(id)) {
             throw new ModelException("Duplicate item id: '" + id + "'.");

@@ -36,22 +36,26 @@ public final class ShiftConfig {
         return this;
     }
 
+    /** Sets the shift's daily start time. */
     public ShiftConfig from(LocalTime start) {
         this.from = start;
         return this;
     }
 
+    /** Sets the shift's daily end time; may be earlier than {@code from} to model an overnight shift. */
     public ShiftConfig to(LocalTime end) {
         this.to = end;
         return this;
     }
 
+    /** Sets how many qualified employees this shift requires. */
     public ShiftConfig needs(int count) {
         if (count < 1) throw new ModelException("needs() must be >= 1, got: " + count);
         this.needsCount = count;
         return this;
     }
 
+    /** Requires that any employee assigned to this shift possess the given skill. */
     public ShiftConfig withSkill(String skill) {
         this.requiredSkill = skill;
         return this;

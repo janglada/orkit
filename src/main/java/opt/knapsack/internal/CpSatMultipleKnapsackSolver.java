@@ -32,11 +32,21 @@ public final class CpSatMultipleKnapsackSolver {
         this.bins = List.copyOf(bins);
     }
 
+    /** Sets the maximum wall-clock time the solver may run before giving up. */
     public CpSatMultipleKnapsackSolver timeLimit(Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    /** Sets the number of parallel search workers (threads). */
     public CpSatMultipleKnapsackSolver workers(int n)            { this.workers = n;                            return this; }
+    /** Sets the random seed used to make search reproducible. */
     public CpSatMultipleKnapsackSolver seed(long s)              { this.seed = s;                               return this; }
+    /** Enables or disables logging of search progress to standard output. */
     public CpSatMultipleKnapsackSolver verbose(boolean v)        { this.verbose = v;                            return this; }
 
+    /**
+     * Builds the CP-SAT model, solves it, and maps the result back to bin/item
+     * identifiers. Returns one {@link BinAssignment} per declared bin (empty
+     * bins included, in declaration order) and lists items that were not packed
+     * into any bin. If the solver finds no solution, both lists are empty.
+     */
     public MultipleKnapsackSolution solve() {
         validate();
 

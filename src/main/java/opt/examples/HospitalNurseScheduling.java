@@ -32,6 +32,12 @@ public class HospitalNurseScheduling {
     };
     private static final LocalDate WEEK_START = LocalDate.of(2026, 7, 6); // Monday
 
+    /**
+     * Builds the weekly ICU nurse-rostering model, solves it with CP-SAT, and prints
+     * the roster grid, ICU night-shift coverage, and per-nurse workload statistics.
+     *
+     * @param args unused command-line arguments
+     */
     public static void main(String[] args) {
         System.out.println("╔═══════════════════════════════════════════════╗");
         System.out.println("║      Hospital ICU Ward — Weekly Roster        ║");

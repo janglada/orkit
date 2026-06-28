@@ -13,6 +13,7 @@ public final class BinConfig {
 
     BinConfig() {}
 
+    /** Sets the maximum weight this bin can hold. */
     public BinConfig capacity(long capacity) {
         if (capacity < 1) throw new ModelException("capacity() must be >= 1, got: " + capacity);
         this.capacity = capacity;

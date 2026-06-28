@@ -20,6 +20,13 @@ import java.util.List;
  */
 public class BarcelonaDeliveryVrp {
 
+    /**
+     * Builds the Barcelona delivery VRP model, solves it with the {@code SAVINGS}
+     * first solution followed by guided local search, and prints the routes,
+     * vehicle utilization, and any stops that could not be assigned.
+     *
+     * @param args unused command-line arguments
+     */
     public static void main(String[] args) {
         System.out.println("╔═══════════════════════════════════════════════════╗");
         System.out.println("║   Barcelona Morning Delivery — Vehicle Routing    ║");

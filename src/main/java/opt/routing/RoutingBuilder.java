@@ -23,6 +23,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     private RoutingGoal goal                = new RoutingGoal.MinimizeTotalDistance();
     private double travelSpeedKmh           = 40.0;
 
+    /** Sets the depot location that every vehicle departs from and returns to. */
     public RoutingBuilder depot(String id, double lat, double lon) {
         this.depotId  = id;
         this.depotLat = lat;
@@ -30,6 +31,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         return this;
     }
 
+    /** Adds a single vehicle configured by the lambda, which receives a fresh {@link VehicleConfig}. */
     public RoutingBuilder vehicle(String id, Consumer<VehicleConfig> config) {
         VehicleConfig cfg = new VehicleConfig();
         cfg.id = id;
@@ -46,6 +48,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         return this;
     }
 
+    /** Adds a stop (delivery/pickup node) configured by the lambda, which receives a fresh {@link StopConfig}. */
     public RoutingBuilder stop(String id, Consumer<StopConfig> config) {
         StopConfig cfg = new StopConfig();
         cfg.id = id;
@@ -55,6 +58,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         return this;
     }
 
+    /** Sets how inter-node distances are sourced; defaults to {@link DistanceSource#haversine()}. */
     public RoutingBuilder distances(DistanceSource source) {
         this.distanceSource = source;
         return this;
@@ -69,6 +73,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         return this;
     }
 
+    /** Sets the minimization objective; defaults to {@link Goals#totalDistance()}. */
     public RoutingBuilder minimize(RoutingGoal routingGoal) {
         this.goal = routingGoal;
         return this;

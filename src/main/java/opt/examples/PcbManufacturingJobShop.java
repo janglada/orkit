@@ -27,6 +27,12 @@ import java.util.List;
  */
 public class PcbManufacturingJobShop {
 
+    /**
+     * Builds the PCB flexible job-shop model, solves it with CP-SAT, and prints the
+     * makespan, per-machine Gantt chart, and the pick-and-place machine assignments.
+     *
+     * @param args unused command-line arguments
+     */
     public static void main(String[] args) {
         System.out.println("╔═════════════════════════════════════════════╗");
         System.out.println("║   PCB Manufacturing — Flexible Job Shop     ║");

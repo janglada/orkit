@@ -29,6 +29,7 @@ public final class CpSatSchedulingSolver {
     private long seed = 0;
     private boolean verbose = false;
 
+    /** Creates a solver bound to the given scheduling model description; inputs are defensively copied. */
     public CpSatSchedulingSolver(List<EmployeeDef> employees,
                                  List<ShiftDef> shifts,
                                  LocalDate horizonStart,
@@ -45,11 +46,25 @@ public final class CpSatSchedulingSolver {
         this.objective = objective;
     }
 
+    /** Sets the maximum wall-clock time the solver may run. */
     public CpSatSchedulingSolver timeLimit(Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    /** Sets the number of parallel CP-SAT worker threads. */
     public CpSatSchedulingSolver workers(int n)            { this.workers = n;                           return this; }
+    /** Sets the random seed for CP-SAT's search randomness. */
     public CpSatSchedulingSolver seed(long s)              { this.seed = s;                              return this; }
+    /** Enables or disables CP-SAT search-progress logging to stdout. */
     public CpSatSchedulingSolver verbose(boolean v)        { this.verbose = v;                           return this; }
 
+    /**
+     * Builds the CP-SAT model from the configured employees, shifts, rules, soft goals, and
+     * objective, then runs the solver to completion or time limit.
+     * <p>
+     * The model fixes impossible assignments to zero (skill or availability mismatches),
+     * enforces each shift's staffing requirement as an equality, applies weekly hour caps and
+     * all registered hard {@link Rule}s, and finally minimizes the combined objective (primary
+     * {@link ObjectiveGoal} plus any {@link SoftGoal} penalties/rewards).
+     * @return the solver's status, objective value, runtime, and resulting assignments
+     */
     public EmployeeRosterResult solve() {
         validate();
 
@@ -420,6 +435,11 @@ public final class CpSatSchedulingSolver {
         };
     }
 
+    /** Raw solver output returned by {@link #solve()}.
+     *  @param status solver termination status
+     *  @param objective optimized objective value, or empty if no objective was modeled or no solution found
+     *  @param runtime wall-clock time spent solving
+     *  @param assignments list of employee-to-shift assignments; empty when no feasible solution exists */
     public record EmployeeRosterResult(
             SolveStatus status,
             OptionalDouble objective,

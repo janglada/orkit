@@ -17,6 +17,7 @@ public final class EmployeeRoster implements Solution {
     private final Duration runtime;
     private final List<ShiftAssignment> assignments;
 
+    /** Creates a roster from the solver's raw output; the assignment list is defensively copied. */
     public EmployeeRoster(SolveStatus status, OptionalDouble objective,
                           Duration runtime, List<ShiftAssignment> assignments) {
         this.status = status;
@@ -25,14 +26,19 @@ public final class EmployeeRoster implements Solution {
         this.assignments = Collections.unmodifiableList(assignments);
     }
 
+    /** Returns the solver's termination status for this roster. */
     @Override public SolveStatus status()       { return status; }
+    /** Returns the objective value, or an empty {@code OptionalDouble} if no objective was optimized. */
     @Override public OptionalDouble objective() { return objective; }
+    /** Returns the wall-clock time spent solving. */
     @Override public Duration runtime()         { return runtime; }
 
+    /** Returns the immutable list of employee-to-shift assignments. */
     public List<ShiftAssignment> assignments() {
         return assignments;
     }
 
+    /** Returns the ids of all shifts assigned to the given employee. */
     public List<String> shiftsFor(String employeeId) {
         return assignments.stream()
                 .filter(a -> a.employee().equals(employeeId))
@@ -40,6 +46,7 @@ public final class EmployeeRoster implements Solution {
                 .collect(Collectors.toList());
     }
 
+    /** Returns the ids of all employees assigned to the given shift. */
     public List<String> staffOf(String shiftId) {
         return assignments.stream()
                 .filter(a -> a.shift().equals(shiftId))

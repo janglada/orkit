@@ -24,6 +24,15 @@ public final class RoutingPlan implements Solution {
     private final List<Route> routes;
     private final List<String> unassignedStops;
 
+    /**
+     * Captures a solved routing result.
+     *
+     * @param status           solver outcome reported by OR-Tools
+     * @param objective        total route distance (meters), or empty if no solution was found
+     * @param runtime          wall-clock time spent solving
+     * @param routes           one {@link Route} per vehicle that was assigned stops (empty vehicles omitted)
+     * @param unassignedStops  stop ids the solver dropped or could not serve
+     */
     public RoutingPlan(SolveStatus status, OptionalDouble objective, Duration runtime,
                        List<Route> routes, List<String> unassignedStops) {
         this.status = status;
@@ -33,14 +42,19 @@ public final class RoutingPlan implements Solution {
         this.unassignedStops = Collections.unmodifiableList(unassignedStops);
     }
 
+    /** Reports the solver outcome; {@code FEASIBLE} is the normal case for routing. */
     @Override public SolveStatus status()       { return status; }
+    /** Total distance of all served routes in meters, or empty when no solution was found. */
     @Override public OptionalDouble objective() { return objective; }
+    /** Wall-clock time spent solving. */
     @Override public Duration runtime()         { return runtime; }
 
+    /** One {@link Route} per vehicle that received stops; idle vehicles are omitted. */
     public List<Route> routes() {
         return routes;
     }
 
+    /** Stop ids the solver dropped (when dropping is allowed) or could not serve. */
     public List<String> unassignedStops() {
         return unassignedStops;
     }

@@ -27,12 +27,14 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
     private final List<SoftGoal> softGoals = new ArrayList<>();
     private ObjectiveGoal objective;
 
+    /** Sets the scheduling horizon to {@code days} consecutive days starting from {@code startDate}. */
     public SchedulingBuilder horizon(LocalDate startDate, int days) {
         this.horizonStart = startDate;
         this.horizonDays = days;
         return this;
     }
 
+    /** Declares an employee with the given unique id and configures it via the {@link EmployeeConfig} lambda. */
     public SchedulingBuilder employee(String id, Consumer<EmployeeConfig> config) {
         if (employees.containsKey(id)) {
             throw new ModelException("Duplicate employee id: " + id);
@@ -51,6 +53,7 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
         return this;
     }
 
+    /** Declares a shift with the given unique id and configures it via the {@link ShiftConfig} lambda. */
     public SchedulingBuilder shift(String id, Consumer<ShiftConfig> config) {
         if (shifts.containsKey(id)) {
             throw new ModelException("Duplicate shift id: " + id);
@@ -68,16 +71,19 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
         return this;
     }
 
+    /** Adds a hard {@link Rule} constraint to the model. */
     public SchedulingBuilder constrain(Rule rule) {
         rules.add(rule);
         return this;
     }
 
+    /** Adds a {@link SoftGoal} that contributes a penalty or reward to the weighted objective. */
     public SchedulingBuilder prefer(SoftGoal goal) {
         softGoals.add(goal);
         return this;
     }
 
+    /** Sets the primary {@link ObjectiveGoal} the solver will minimize. */
     public SchedulingBuilder minimize(ObjectiveGoal goal) {
         this.objective = goal;
         return this;
@@ -89,6 +95,7 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
         return new SchedulingProblem(snapshot());
     }
 
+    /** Convenience method: builds the problem and immediately returns its {@link Solver}. */
     @Override
     public Solver<EmployeeRoster> solver() {
         return build().solver();
@@ -151,30 +158,35 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
             this.snap = snap;
         }
 
+        /** Sets the maximum wall-clock time the solver may run. */
         @Override
         public Solver<EmployeeRoster> timeLimit(Duration limit) {
             this.timeLimit = limit;
             return this;
         }
 
+        /** Sets the number of parallel CP-SAT worker threads. */
         @Override
         public Solver<EmployeeRoster> workers(int threads) {
             this.workers = threads;
             return this;
         }
 
+        /** Sets the random seed for CP-SAT's search randomness. */
         @Override
         public Solver<EmployeeRoster> seed(long randomSeed) {
             this.seed = randomSeed;
             return this;
         }
 
+        /** Enables or disables CP-SAT search-progress logging to stdout. */
         @Override
         public Solver<EmployeeRoster> verbose(boolean logToStdout) {
             this.verbose = logToStdout;
             return this;
         }
 
+        /** Runs the configured CP-SAT solver and returns the resulting {@link EmployeeRoster}. */
         @Override
         public EmployeeRoster solve() {
             CpSatSchedulingSolver cpSat = new CpSatSchedulingSolver(

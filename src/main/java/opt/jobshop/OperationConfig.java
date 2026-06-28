@@ -19,11 +19,13 @@ public final class OperationConfig {
         this.job = job;
     }
 
+    /** Assigns this operation to a single fixed machine. */
     public OperationConfig on(String machine) {
         this.machines = List.of(machine);
         return this;
     }
 
+    /** Marks this operation as flexible, allowing it to run on any of the given candidate machines. */
     public OperationConfig onAnyOf(String... machines) {
         if (machines.length < 2) {
             throw new ModelException("onAnyOf() requires at least 2 candidate machines");
@@ -32,6 +34,7 @@ public final class OperationConfig {
         return this;
     }
 
+    /** Sets the processing duration of this operation in model time units. */
     public OperationConfig takes(int durationUnits) {
         if (durationUnits < 1) throw new ModelException("takes() must be >= 1, got: " + durationUnits);
         this.duration = durationUnits;

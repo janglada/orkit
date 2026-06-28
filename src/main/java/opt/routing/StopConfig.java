@@ -19,30 +19,35 @@ public final class StopConfig {
 
     StopConfig() {}
 
+    /** Sets the geographic location of this stop (required when using haversine distances). */
     public StopConfig at(double lat, double lon) {
         this.lat = lat;
         this.lon = lon;
         return this;
     }
 
+    /** Sets the demand picked up or delivered at this stop, in the same units as vehicle capacity. */
     public StopConfig demand(int units) {
         if (units < 0) throw new ModelException("demand must be >= 0, got: " + units);
         this.demand = units;
         return this;
     }
 
+    /** Sets the dwell time the vehicle spends at this stop before departing. */
     public StopConfig serviceTime(Duration duration) {
         if (duration.isNegative()) throw new ModelException("serviceTime must be non-negative");
         this.serviceTimeMin = (int) duration.toMinutes();
         return this;
     }
 
+    /** Sets the earliest time-of-day the stop may be served; defaults to 00:00. */
     public StopConfig openFrom(LocalTime time) {
         this.openMin = time.toSecondOfDay() / 60;
         validateWindow();
         return this;
     }
 
+    /** Sets the latest time-of-day the stop may be served; defaults to 23:59 (end of day). */
     public StopConfig closeAt(LocalTime time) {
         this.closeMin = time.toSecondOfDay() / 60;
         validateWindow();

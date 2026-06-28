@@ -31,6 +31,21 @@ public final class RoutingCompiler {
     private long seed = 0;
     private boolean verbose = false;
 
+    /**
+     * Creates a compiler for the given routing model description.
+     *
+     * @param depotId          id of the depot node (node 0)
+     * @param depotLat         depot latitude, used for haversine distances
+     * @param depotLon         depot longitude, used for haversine distances
+     * @param vehicles         vehicle descriptions, one per vehicle
+     * @param stops            stop descriptions, indexed 1..N after the depot
+     * @param distanceSource   how inter-node distances are sourced
+     * @param droppingPenalty  per-stop penalty added when a stop is dropped; {@code <= 0} disables dropping
+     * @param firstSolution    first-solution strategy
+     * @param metaheuristic    local-search metaheuristic
+     * @param goal             minimization objective
+     * @param travelSpeedKmh   average speed used to convert distances to travel times
+     */
     public RoutingCompiler(String depotId, double depotLat, double depotLon,
                            List<VehicleDef> vehicles, List<StopDef> stops,
                            DistanceSource distanceSource, long droppingPenalty,
@@ -49,11 +64,19 @@ public final class RoutingCompiler {
         this.goal = goal;
     }
 
+    /** Sets the wall-clock time budget for the search; default 30 seconds. */
     public RoutingCompiler timeLimit(java.time.Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    /** Sets the number of parallel search workers; default 1. */
     public RoutingCompiler workers(int n)                       { this.workers = n;                           return this; }
+    /** Seeds the randomized local-search component for reproducibility. */
     public RoutingCompiler seed(long s)                         { this.seed = s;                              return this; }
+    /** Enables OR-Tools search log output. */
     public RoutingCompiler verbose(boolean v)                   { this.verbose = v;                           return this; }
 
+    /**
+     * Builds the OR-Tools {@link RoutingModel}, applies capacity, time-window and distance
+     * dimensions, runs the search, and extracts the resulting {@link RoutingPlan}.
+     */
     public RoutingPlan solve() {
         validate();
 

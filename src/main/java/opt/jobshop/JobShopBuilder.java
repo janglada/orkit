@@ -20,11 +20,16 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
     private final Set<String> machines = new LinkedHashSet<>();
     private final List<JobDef> jobs = new ArrayList<>();
 
+    /** Registers one or more machines that operations can be scheduled on. */
     public JobShopBuilder machines(String... machineIds) {
         machines.addAll(Arrays.asList(machineIds));
         return this;
     }
 
+    /**
+     * Adds a job to the schedule, configuring its ordered operations inside the
+     * supplied lambda via {@link JobConfig}.
+     */
     public JobShopBuilder job(String id, Consumer<JobConfig> config) {
         JobConfig cfg = new JobConfig();
         config.accept(cfg);

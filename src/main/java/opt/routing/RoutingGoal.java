@@ -4,5 +4,6 @@ package opt.routing;
 public sealed interface RoutingGoal
         permits RoutingGoal.MinimizeTotalDistance {
 
+    /** Minimize the sum of arc costs (meters) across all vehicles. */
     record MinimizeTotalDistance() implements RoutingGoal {}
 }

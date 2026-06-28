@@ -23,22 +23,26 @@ public final class EmployeeConfig {
 
     EmployeeConfig() {}
 
+    /** Adds one or more skills possessed by this employee. */
     public EmployeeConfig skills(String... skills) {
         this.skills.addAll(Arrays.asList(skills));
         return this;
     }
 
+    /** Sets this employee's hourly labor cost, used by the {@link Goals#totalLaborCost()} objective. */
     public EmployeeConfig costPerHour(int cost) {
         if (cost < 0) throw new ModelException("costPerHour must be >= 0, got: " + cost);
         this.costPerHour = cost;
         return this;
     }
 
+    /** Restricts this employee's working days; if left empty the employee is available every day of the week. */
     public EmployeeConfig availableOn(DayOfWeek... days) {
         this.availableDays.addAll(Arrays.asList(days));
         return this;
     }
 
+    /** Caps this employee's total scheduled minutes per calendar week. */
     public EmployeeConfig maxHoursPerWeek(int hours) {
         if (hours <= 0) throw new ModelException("maxHoursPerWeek must be > 0, got: " + hours);
         this.maxHoursPerWeek = hours;

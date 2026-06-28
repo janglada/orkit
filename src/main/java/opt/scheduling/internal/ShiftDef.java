@@ -4,6 +4,15 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
+/** Immutable description of a shift built by {@link opt.scheduling.ShiftConfig}.
+ *  A shift is placed on either a recurring {@link DayOfWeek} or a concrete {@link LocalDate}.
+ *  @param id unique shift identifier
+ *  @param day recurring day-of-week, or null when {@code specificDate} is set
+ *  @param specificDate concrete calendar date, or null when {@code day} is set
+ *  @param from shift start time
+ *  @param to shift end time; may be before {@code from} to model an overnight shift
+ *  @param needsCount number of qualified employees the shift requires
+ *  @param requiredSkill skill employees must have, or null for an unskilled shift */
 public record ShiftDef(
         String id,
         DayOfWeek day,

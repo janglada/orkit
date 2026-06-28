@@ -17,6 +17,10 @@ public final class JobShopSchedule implements Solution {
     private final List<String> machines;
     private final List<ScheduledOperation> operations;
 
+    /**
+     * Constructs a solved schedule. Normally not called directly by users;
+     * instances are produced by {@link opt.Solver#solve()}.
+     */
     public JobShopSchedule(SolveStatus status, OptionalDouble objective, Duration runtime,
                            long makespan, List<String> machines, List<ScheduledOperation> operations) {
         this.status = status;
@@ -27,10 +31,14 @@ public final class JobShopSchedule implements Solution {
         this.operations = Collections.unmodifiableList(operations);
     }
 
+    /** Returns the solver status for this solution. */
     @Override public SolveStatus status()       { return status; }
+    /** Returns the objective value (makespan) if a feasible solution was found. */
     @Override public OptionalDouble objective() { return objective; }
+    /** Returns the wall-clock time spent solving. */
     @Override public Duration runtime()         { return runtime; }
 
+    /** Returns the minimized makespan (time at which the last operation ends). */
     public long makespan() {
         return makespan;
     }
@@ -43,6 +51,7 @@ public final class JobShopSchedule implements Solution {
                 .collect(Collectors.toList());
     }
 
+    /** Returns all operations belonging to the given job, ordered by their index in the job. */
     public List<ScheduledOperation> operationsOf(String job) {
         return operations.stream()
                 .filter(op -> op.job().equals(job))
@@ -50,6 +59,7 @@ public final class JobShopSchedule implements Solution {
                 .collect(Collectors.toList());
     }
 
+    /** Builds a {@link Gantt} view of this schedule grouped by machine. */
     public Gantt asGantt() {
         Map<String, List<ScheduledOperation>> byMachine = new LinkedHashMap<>();
         for (String m : machines) {

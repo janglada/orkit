@@ -20,16 +20,26 @@ public final class CpSatJobShopSolver {
     private long seed = 0;
     private boolean verbose = false;
 
+    /** Creates a solver for the given machines and jobs. Internal; obtain instances via {@link opt.jobshop.JobShopBuilder#solver()}. */
     public CpSatJobShopSolver(List<String> machines, List<JobDef> jobs) {
         this.machines = List.copyOf(machines);
         this.jobs = List.copyOf(jobs);
     }
 
+    /** Sets the maximum time the CP-SAT solver may run. */
     public CpSatJobShopSolver timeLimit(Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    /** Sets the number of parallel search workers. */
     public CpSatJobShopSolver workers(int n)            { this.workers = n;                            return this; }
+    /** Sets the random seed for the CP-SAT search. */
     public CpSatJobShopSolver seed(long s)              { this.seed = s;                               return this; }
+    /** Enables or disables CP-SAT search-progress logging. */
     public CpSatJobShopSolver verbose(boolean v)        { this.verbose = v;                            return this; }
 
+    /**
+     * Builds the CP-SAT model (interval variables, per-machine {@code NoOverlap},
+     * intra-job precedence, and a minimized makespan) and returns the solved
+     * {@link JobShopSchedule}.
+     */
     public JobShopSchedule solve() {
         validate();
 

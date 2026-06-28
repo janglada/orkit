@@ -26,6 +26,13 @@ import java.time.Duration;
  */
 public class CargoLoadingMultipleKnapsack {
 
+    /**
+     * Builds the cargo-loading multiple-knapsack model, solves it with CP-SAT, and
+     * prints the per-container assignments, total shipped profit, and any items
+     * left behind due to capacity.
+     *
+     * @param args unused command-line arguments
+     */
     public static void main(String[] args) {
         System.out.println("╔═════════════════════════════════════════════╗");
         System.out.println("║  Cargo Loading — Multiple Knapsack          ║");
