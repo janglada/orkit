@@ -13,7 +13,7 @@ public record ShiftDef(
         int needsCount,
         String requiredSkill
 ) {
-    /** Duration in whole minutes. Handles overnight shifts (to < from). */
+    /** Duration in whole minutes. Handles overnight shifts where {@code to} is before {@code from}. */
     public int durationMinutes() {
         int start = from.toSecondOfDay() / 60;
         int end   = to.toSecondOfDay() / 60;
