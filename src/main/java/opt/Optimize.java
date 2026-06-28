@@ -2,6 +2,7 @@ package opt;
 
 import com.google.ortools.Loader;
 import opt.jobshop.JobShopBuilder;
+import opt.knapsack.MultipleKnapsackBuilder;
 import opt.routing.RoutingBuilder;
 import opt.scheduling.SchedulingBuilder;
 
@@ -21,6 +22,10 @@ public final class Optimize {
 
     public static RoutingBuilder vehicleRouting() {
         return new RoutingBuilder();
+    }
+
+    public static MultipleKnapsackBuilder multipleKnapsack() {
+        return new MultipleKnapsackBuilder();
     }
 
     private Optimize() {}

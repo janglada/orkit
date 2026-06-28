@@ -2,6 +2,8 @@ package opt;
 
 import opt.jobshop.JobShopSchedule;
 import opt.jobshop.ScheduledOperation;
+import opt.knapsack.BinAssignment;
+import opt.knapsack.MultipleKnapsackSolution;
 import opt.routing.DistanceSource;
 import opt.routing.Metaheuristic;
 import opt.routing.Route;
@@ -25,6 +27,7 @@ public class SmokeTest {
         testScheduling();
         testJobShop();
         testRouting();
+        testMultipleKnapsack();
     }
 
     static void testScheduling() {
@@ -137,6 +140,31 @@ public class SmokeTest {
         }
         if (!plan.unassignedStops().isEmpty()) {
             System.out.println("  Unassigned: " + plan.unassignedStops());
+        }
+    }
+
+    static void testMultipleKnapsack() {
+        System.out.println("\n=== Multiple Knapsack ===");
+
+        MultipleKnapsackSolution solution = Optimize.multipleKnapsack()
+                .bin("T1", b -> b.capacity(10))
+                .bin("T2", b -> b.capacity(10))
+
+                .item("I1", i -> i.profit(7).weight(3))
+                .item("I2", i -> i.profit(5).weight(6))
+                .item("I3", i -> i.profit(9).weight(5))
+                .item("I4", i -> i.profit(4).weight(2))
+
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        System.out.println("Status:      " + solution.status());
+        System.out.println("TotalProfit: " + solution.totalProfit());
+        for (BinAssignment a : solution.assignments()) {
+            System.out.printf("  %s: %s  (load %d, profit %d)%n",
+                    a.bin(), a.items(), a.usedCapacity(), a.profit());
+        }
+        if (!solution.unassignedItems().isEmpty()) {
+            System.out.println("  Unassigned: " + solution.unassignedItems());
         }
     }
 }

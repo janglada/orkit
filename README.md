@@ -1,6 +1,6 @@
 # OR-Tools High-Level DSL
 
-A fluent Java 21 DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.11, covering three optimization domains: **job-shop scheduling**, **employee shift scheduling**, and **vehicle routing**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
+A fluent Java 21 DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.11, covering four optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, and **multiple knapsack**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ mvn test
 
 ## Run examples
 
-Three runnable mains illustrate each domain. The `exec-maven-plugin` is already wired into the build; pass the main class explicitly:
+Four runnable mains illustrate each domain. The `exec-maven-plugin` is already wired into the build; pass the main class explicitly:
 
 ```bash
 # PCB flexible job shop (8 board types, 5 machines, makespan minimization)
@@ -26,11 +26,14 @@ mvn exec:java -Dexec.mainClass=opt.examples.HospitalNurseScheduling
 
 # Barcelona parcel delivery VRP (4 vehicles, 18 stops, time windows, SAVINGS + GLS)
 mvn exec:java -Dexec.mainClass=opt.examples.BarcelonaDeliveryVrp
+
+# Cargo loading — multiple knapsack (3 containers, 9 cargo lots, value maximization)
+mvn exec:java -Dexec.mainClass=opt.examples.CargoLoadingMultipleKnapsack
 ```
 
 ## Quick start
 
-All entry points live on `opt.Optimize`. Each builder ends with `.solver()...solve()`, which returns a typed result (`JobShopSchedule`, `EmployeeRoster`, `RoutingPlan`).
+All entry points live on `opt.Optimize`. Each builder ends with `.solver()...solve()`, which returns a typed result (`JobShopSchedule`, `EmployeeRoster`, `RoutingPlan`, `MultipleKnapsackSolution`).
 
 ### Job-shop scheduling
 
@@ -110,6 +113,35 @@ RoutingPlan plan = Optimize.vehicleRouting()
 System.out.println(plan.status() + " distance=" + plan.objective());
 ```
 
+### Multiple knapsack
+
+```java
+import opt.Optimize;
+import opt.knapsack.BinAssignment;
+import opt.knapsack.MultipleKnapsackSolution;
+import java.time.Duration;
+
+MultipleKnapsackSolution sol = Optimize.multipleKnapsack()
+        .bin("T1", b -> b.capacity(10))
+        .bin("T2", b -> b.capacity(10))
+        .item("I1", i -> i.profit(7).weight(3))
+        .item("I2", i -> i.profit(5).weight(6))
+        .item("I3", i -> i.profit(9).weight(5))
+        .item("I4", i -> i.profit(4).weight(2))
+        .solver()
+        .timeLimit(Duration.ofSeconds(10))
+        .workers(4)
+        .solve();
+
+System.out.println(sol.status() + " totalProfit=" + sol.totalProfit());
+for (BinAssignment a : sol.assignments()) {
+    System.out.printf("  %s: %s (load %d/%d, profit %d)%n",
+            a.bin(), a.items(), a.usedCapacity(), a.capacity(), a.profit());
+}
+```
+
+Items may be left out of every bin when total weight exceeds total capacity; those appear in `sol.unassignedItems()`. Use `sol.binOf(item)` / `sol.assignmentOf(bin)` to look up individual placements.
+
 ## Result API
 
 Every `solve()` returns a `Solution` subtype exposing:
@@ -128,4 +160,4 @@ Every `solve()` returns a `Solution` subtype exposing:
 
 ## Project layout
 
-Public API lives in package `opt` (entry point `Optimize`) plus the domain packages `opt.jobshop`, `opt.scheduling`, and `opt.routing`. All OR-Types modeling detail is confined to `*.internal` subpackages and is not part of the supported API.
+Public API lives in package `opt` (entry point `Optimize`) plus the domain packages `opt.jobshop`, `opt.scheduling`, `opt.routing`, and `opt.knapsack`. All OR-Tools modeling detail is confined to `*.internal` subpackages and is not part of the supported API.
