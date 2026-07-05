@@ -206,23 +206,25 @@ public final class CpSatPackingSolver {
         }
 
         // Objective — switch on the goal.
-        if (goal instanceof PackingGoal.MinimizeContainersUsed) {
-            LinearExprBuilder obj = LinearExpr.newBuilder();
-            for (int b = 0; b < B; b++) {
-                obj.add(used[b]);
-            }
-            model.minimize(obj);
-        } else if (goal instanceof PackingGoal.MaximizeVolumeUtilization) {
-            LinearExprBuilder obj = LinearExpr.newBuilder();
-            for (int i = 0; i < I; i++) {
-                long vol = boxes.get(i).volume();
+        switch (goal) {
+            case PackingGoal.MinimizeContainersUsed minimizeContainersUsed -> {
+                LinearExprBuilder obj = LinearExpr.newBuilder();
                 for (int b = 0; b < B; b++) {
-                    obj.addTerm(x[i][b], vol);
+                    obj.add(used[b]);
                 }
+                model.minimize(obj);
             }
-            model.maximize(obj);
-        } else {
-            throw new ModelException("Unsupported packing goal: " + goal);
+            case PackingGoal.MaximizeVolumeUtilization maximizeVolumeUtilization -> {
+                LinearExprBuilder obj = LinearExpr.newBuilder();
+                for (int i = 0; i < I; i++) {
+                    long vol = boxes.get(i).volume();
+                    for (int b = 0; b < B; b++) {
+                        obj.addTerm(x[i][b], vol);
+                    }
+                }
+                model.maximize(obj);
+            }
+            case null, default -> throw new ModelException("Unsupported packing goal: " + goal);
         }
 
         // Solve

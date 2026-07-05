@@ -122,17 +122,19 @@ public final class CpSatCuttingSolver {
 
         // Objective
         LinearExprBuilder obj = LinearExpr.newBuilder();
-        if (goal instanceof CuttingGoal.MinimizeWaste) {
-            // Minimize total length of stock consumed (= total waste + constant total piece length).
-            for (int r = 0; r < R; r++) {
-                obj.addTerm(used[r], stocks.get(r).length());
+        switch (goal) {
+            case CuttingGoal.MinimizeWaste minimizeWaste -> {
+                // Minimize total length of stock consumed (= total waste + constant total piece length).
+                for (int r = 0; r < R; r++) {
+                    obj.addTerm(used[r], stocks.get(r).length());
+                }
             }
-        } else if (goal instanceof CuttingGoal.MinimizeStockUsed) {
-            for (int r = 0; r < R; r++) {
-                obj.addTerm(used[r], 1);
+            case CuttingGoal.MinimizeStockUsed minimizeStockUsed -> {
+                for (int r = 0; r < R; r++) {
+                    obj.addTerm(used[r], 1);
+                }
             }
-        } else {
-            throw new ModelException("Unsupported cutting goal: " + goal);
+            case null, default -> throw new ModelException("Unsupported cutting goal: " + goal);
         }
         model.minimize(obj);
 
