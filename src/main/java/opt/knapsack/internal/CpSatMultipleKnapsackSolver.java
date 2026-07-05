@@ -104,7 +104,7 @@ public final class CpSatMultipleKnapsackSolver {
         CpSolverStatus cpStatus = solver.solve(model);
         Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
 
-        SolveStatus status = mapStatus(cpStatus);
+        SolveStatus status = SolveStatus.mapStatus(cpStatus);
         long totalProfit = 0;
         List<BinAssignment> assignments = new ArrayList<>();
         List<String> unassignedItems = new ArrayList<>();
@@ -164,15 +164,7 @@ public final class CpSatMultipleKnapsackSolver {
         if (bins.isEmpty()) throw new ModelException("At least one bin is required.");
     }
 
-    private SolveStatus mapStatus(CpSolverStatus s) {
-        return switch (s) {
-            case OPTIMAL       -> SolveStatus.OPTIMAL;
-            case FEASIBLE      -> SolveStatus.FEASIBLE;
-            case INFEASIBLE    -> SolveStatus.INFEASIBLE;
-            case MODEL_INVALID -> SolveStatus.MODEL_INVALID;
-            default            -> SolveStatus.UNKNOWN;
-        };
-    }
+
 
     /** Builds a weighted-sum LinearExpr from BoolVars and their coefficients. */
     private static LinearExpr buildWeightedSum(BoolVar[] vars, long[] coefficients) {

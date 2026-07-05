@@ -238,7 +238,7 @@ public final class CpSatPackingSolver {
         CpSolverStatus cpStatus = solver.solve(model);
         Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
 
-        SolveStatus status = mapStatus(cpStatus);
+        SolveStatus status = SolveStatus.mapStatus(cpStatus);
         List<ContainerAssignment> assignments = new ArrayList<>();
         List<String> unassignedBoxes = new ArrayList<>();
 
@@ -305,15 +305,6 @@ public final class CpSatPackingSolver {
         if (boxes.isEmpty()) throw new ModelException("At least one box is required.");
     }
 
-    private SolveStatus mapStatus(CpSolverStatus s) {
-        return switch (s) {
-            case OPTIMAL       -> SolveStatus.OPTIMAL;
-            case FEASIBLE      -> SolveStatus.FEASIBLE;
-            case INFEASIBLE    -> SolveStatus.INFEASIBLE;
-            case MODEL_INVALID -> SolveStatus.MODEL_INVALID;
-            default            -> SolveStatus.UNKNOWN;
-        };
-    }
 
     /** Builds a weighted-sum LinearExpr from BoolVars and their coefficients. */
     private static LinearExpr buildWeightedSum(BoolVar[] vars, long[] coefficients) {

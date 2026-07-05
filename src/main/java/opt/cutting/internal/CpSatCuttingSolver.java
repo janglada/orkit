@@ -5,7 +5,6 @@ import opt.ModelException;
 import opt.SolveStatus;
 import opt.cutting.CuttingGoal;
 import opt.cutting.CuttingSolution;
-import opt.cutting.Goals;
 import opt.cutting.StockAssignment;
 import opt.cutting.StockAssignment.CutPiece;
 
@@ -149,7 +148,7 @@ public final class CpSatCuttingSolver {
         CpSolverStatus cpStatus = solver.solve(model);
         Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
 
-        SolveStatus status = mapStatus(cpStatus);
+        SolveStatus status =  SolveStatus.mapStatus(cpStatus);
         List<StockAssignment> assignments = new ArrayList<>();
         List<String> unplacedPieces = new ArrayList<>();
 
@@ -205,15 +204,7 @@ public final class CpSatCuttingSolver {
         return c;
     }
 
-    private SolveStatus mapStatus(CpSolverStatus s) {
-        return switch (s) {
-            case OPTIMAL       -> SolveStatus.OPTIMAL;
-            case FEASIBLE      -> SolveStatus.FEASIBLE;
-            case INFEASIBLE    -> SolveStatus.INFEASIBLE;
-            case MODEL_INVALID -> SolveStatus.MODEL_INVALID;
-            default            -> SolveStatus.UNKNOWN;
-        };
-    }
+
 
     /** Builds a weighted-sum LinearExpr from BoolVars and their coefficients. */
     private static LinearExpr buildWeightedSum(BoolVar[] vars, long[] coefficients) {

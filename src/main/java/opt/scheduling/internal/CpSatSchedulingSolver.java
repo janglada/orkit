@@ -200,7 +200,7 @@ public final class CpSatSchedulingSolver {
         CpSolverStatus cpStatus = solver.solve(model);
         Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
 
-        SolveStatus status = mapStatus(cpStatus);
+        SolveStatus status = SolveStatus.mapStatus(cpStatus);
         boolean feasible = status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE;
 
         List<opt.scheduling.ShiftAssignment> assignments = new ArrayList<>();
@@ -425,15 +425,6 @@ public final class CpSatSchedulingSolver {
         }
     }
 
-    private SolveStatus mapStatus(CpSolverStatus s) {
-        return switch (s) {
-            case OPTIMAL       -> SolveStatus.OPTIMAL;
-            case FEASIBLE      -> SolveStatus.FEASIBLE;
-            case INFEASIBLE    -> SolveStatus.INFEASIBLE;
-            case MODEL_INVALID -> SolveStatus.MODEL_INVALID;
-            default            -> SolveStatus.UNKNOWN;
-        };
-    }
 
     /** Raw solver output returned by {@link #solve()}.
      *  @param status solver termination status

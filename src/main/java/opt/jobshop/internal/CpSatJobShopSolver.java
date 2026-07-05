@@ -139,7 +139,7 @@ public final class CpSatJobShopSolver {
         CpSolverStatus cpStatus = solver.solve(model);
         Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
 
-        SolveStatus status = mapStatus(cpStatus);
+        SolveStatus status =  SolveStatus.mapStatus(cpStatus);
         long makespanValue = 0;
         List<ScheduledOperation> operations = new ArrayList<>();
 
@@ -194,13 +194,4 @@ public final class CpSatJobShopSolver {
         }
     }
 
-    private SolveStatus mapStatus(CpSolverStatus s) {
-        return switch (s) {
-            case OPTIMAL       -> SolveStatus.OPTIMAL;
-            case FEASIBLE      -> SolveStatus.FEASIBLE;
-            case INFEASIBLE    -> SolveStatus.INFEASIBLE;
-            case MODEL_INVALID -> SolveStatus.MODEL_INVALID;
-            default            -> SolveStatus.UNKNOWN;
-        };
-    }
 }
