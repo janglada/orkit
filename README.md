@@ -1,6 +1,6 @@
 # OR-Tools High-Level DSL
 
-A fluent Java 21 DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.11, covering four optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, and **multiple knapsack**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
+A fluent Java 21 DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.11, covering seven optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, **multiple knapsack**, **container loading (3D bin packing)**, **resource booking (appointment scheduling)**, and **cutting stock**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ mvn test
 
 ## Run examples
 
-Four runnable mains illustrate each domain. The `exec-maven-plugin` is already wired into the build; pass the main class explicitly:
+Seven runnable mains illustrate each domain. The `exec-maven-plugin` is already wired into the build; pass the main class explicitly:
 
 ```bash
 # PCB flexible job shop (8 board types, 5 machines, makespan minimization)
@@ -29,11 +29,20 @@ mvn exec:java -Dexec.mainClass=opt.examples.BarcelonaDeliveryVrp
 
 # Cargo loading — multiple knapsack (3 containers, 9 cargo lots, value maximization)
 mvn exec:java -Dexec.mainClass=opt.examples.CargoLoadingMultipleKnapsack
+
+# Warehouse container loading — 3D bin packing (2 containers, 8 boxes, minimize containers)
+mvn exec:java -Dexec.mainClass=opt.examples.WarehouseContainerPacking
+
+# Clinic appointment booking (3 doctors, 8 appointments, minimize unscheduled penalty)
+mvn exec:java -Dexec.mainClass=opt.examples.ClinicAppointmentBooking
+
+# Steel roll cutting stock (3 stock types, 5 piece types, minimize waste)
+mvn exec:java -Dexec.mainClass=opt.examples.SteelRollCuttingStock
 ```
 
 ## Quick start
 
-All entry points live on `opt.Optimize`. Each builder ends with `.solver()...solve()`, which returns a typed result (`JobShopSchedule`, `EmployeeRoster`, `RoutingPlan`, `MultipleKnapsackSolution`).
+All entry points live on `opt.Optimize`. Each builder ends with `.solver()...solve()`, which returns a typed result (`JobShopSchedule`, `EmployeeRoster`, `RoutingPlan`, `MultipleKnapsackSolution`, `PackingSolution`, `BookingSolution`, `CuttingSolution`).
 
 ### Job-shop scheduling
 
@@ -142,6 +151,105 @@ for (BinAssignment a : sol.assignments()) {
 
 Items may be left out of every bin when total weight exceeds total capacity; those appear in `sol.unassignedItems()`. Use `sol.binOf(item)` / `sol.assignmentOf(bin)` to look up individual placements.
 
+### Container loading (3D bin packing)
+
+```java
+import opt.Optimize;
+import opt.packing.*;
+import java.time.Duration;
+
+PackingSolution sol = Optimize.packing()
+        .container("40ft", c -> c.length(1200).width(235).height(269).maxWeight(28000))
+        .container("20ft", c -> c.length(586).width(235).height(269).maxWeight(22000))
+        .box("Pallet-A", b -> b.length(120).width(80).height(150).weight(800))
+        .box("Pallet-B", b -> b.length(120).width(80).height(150).weight(1200))
+        .box("Machine-X", b -> b.length(200).width(100).height(180).weight(4500))
+        .minimize(Goals.minimizeContainersUsed())
+        .solver()
+        .timeLimit(Duration.ofSeconds(15))
+        .workers(4)
+        .solve();
+
+System.out.println(sol.status() + " containersUsed=" + sol.containersUsed());
+for (ContainerAssignment a : sol.assignments()) {
+    System.out.printf("  %s: %d boxes, %d/%d vol, %d/%d wt%n",
+            a.containerId(), a.boxes().size(),
+            a.usedVolume(), a.length()*a.width()*a.height(),
+            a.usedWeight(), a.maxWeight());
+}
+```
+
+Boxes too large for any container appear in `sol.unassignedBoxes()`. Each `ContainerAssignment` carries per-box `BoxPlacement` records with origin coordinates (x, y, z) for 3D non-overlap verification.
+
+### Resource booking (appointment scheduling)
+
+```java
+import opt.Optimize;
+import opt.booking.*;
+import java.time.*;
+
+BookingSolution plan = Optimize.booking()
+        .horizon(LocalDate.of(2026, 7, 6), 1)
+        .resource("Dr-Chen", r -> r
+                .available(new TimeSlot(
+                        LocalDateTime.of(2026, 7, 6, 9, 0),
+                        LocalDateTime.of(2026, 7, 6, 12, 0)))
+                .available(new TimeSlot(
+                        LocalDateTime.of(2026, 7, 6, 13, 0),
+                        LocalDateTime.of(2026, 7, 6, 17, 0))))
+        .resource("Dr-Patel", r -> r
+                .available(new TimeSlot(
+                        LocalDateTime.of(2026, 7, 6, 8, 0),
+                        LocalDateTime.of(2026, 7, 6, 16, 0))))
+        .appointment("A1", a -> a.duration(Duration.ofMinutes(30))
+                .requiresAnyOf("Dr-Chen", "Dr-Patel"))
+        .appointment("A2", a -> a.duration(Duration.ofMinutes(60))
+                .requiresAnyOf("Dr-Chen")
+                .earliest(LocalDateTime.of(2026, 7, 6, 10, 0))
+                .penaltyIfUnscheduled(50))
+        .minimize(Goals.minimizeUnscheduledPenalty())
+        .solver()
+        .timeLimit(Duration.ofSeconds(10))
+        .workers(4)
+        .solve();
+
+System.out.println(plan.status() + " objective=" + plan.objective());
+for (AppointmentAssignment a : plan.assignments()) {
+    System.out.printf("  %s -> %s at %d-%d%n",
+            a.appointmentId(), a.resourceId(), a.startMinute(), a.endMinute());
+}
+```
+
+Resources have one or more availability slots (lunch breaks, off-hours). Appointments may optionally declare `earliest`/`latest` time windows and an unscheduled penalty. Use `plan.unscheduled()` to list appointments that could not be placed.
+
+### Cutting stock
+
+```java
+import opt.Optimize;
+import opt.cutting.*;
+import java.time.Duration;
+
+CuttingSolution sol = Optimize.cuttingStock()
+        .stock("R1", s -> s.length(6000).cost(100).quantity(5))
+        .stock("R2", s -> s.length(8000).cost(130).quantity(3))
+        .required("Bar-A", p -> p.length(1500).quantity(8))
+        .required("Bar-B", p -> p.length(1200).quantity(6))
+        .required("Bar-C", p -> p.length(900).quantity(4))
+        .minimize(Goals.minimizeWaste())
+        .solver()
+        .timeLimit(Duration.ofSeconds(15))
+        .workers(4)
+        .solve();
+
+System.out.println(sol.status() + " waste=" + sol.totalWaste());
+for (StockAssignment a : sol.assignments()) {
+    System.out.printf("  %s (len=%d): %d pieces, waste=%d%n",
+            a.stockId(), a.length(), a.pieces().size(), a.waste());
+}
+```
+
+All required pieces must be placed; the model is infeasible if total piece length exceeds total stock length. `quantity` expands a stock or piece type into multiple instances. `MinimizeWaste` minimizes total length consumed; `MinimizeStockUsed` minimizes the number of rolls used (different behaviors when rolls have different lengths).
+
 ## Result API
 
 Every `solve()` returns a `Solution` subtype exposing:
@@ -160,4 +268,4 @@ Every `solve()` returns a `Solution` subtype exposing:
 
 ## Project layout
 
-Public API lives in package `opt` (entry point `Optimize`) plus the domain packages `opt.jobshop`, `opt.scheduling`, `opt.routing`, and `opt.knapsack`. All OR-Tools modeling detail is confined to `*.internal` subpackages and is not part of the supported API.
+Public API lives in package `opt` (entry point `Optimize`) plus the domain packages `opt.jobshop`, `opt.scheduling`, `opt.routing`, `opt.knapsack`, `opt.packing`, `opt.booking`, and `opt.cutting`. All OR-Tools modeling detail is confined to `*.internal` subpackages and is not part of the supported API.
