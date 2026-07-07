@@ -35,7 +35,7 @@ public final class CpSatPackingSolver {
     private final List<ContainerDef> containers;
     private final PackingGoal goal;
 
-    private long timeLimitSeconds = 60;
+    private double timeLimitSeconds = 60;
     private int workers = 1;
     private long seed = 0;
     private boolean verbose = false;
@@ -47,7 +47,11 @@ public final class CpSatPackingSolver {
     }
 
     /** Sets the maximum wall-clock time the solver may run before giving up. */
-    public CpSatPackingSolver timeLimit(Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    public CpSatPackingSolver timeLimit(Duration limit) {
+        if (limit == null) throw new ModelException("timeLimit must not be null.");
+        this.timeLimitSeconds = limit.toMillis() / 1000.0;
+        return this;
+    }
     /** Sets the number of parallel search workers (threads). */
     public CpSatPackingSolver workers(int n)            { this.workers = n;                            return this; }
     /** Sets the random seed used to make search reproducible. */

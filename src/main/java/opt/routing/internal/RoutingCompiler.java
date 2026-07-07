@@ -26,7 +26,7 @@ public final class RoutingCompiler {
     private final RoutingGoal goal;
     private final double travelSpeedKmh;
 
-    private long timeLimitSeconds = 30;
+    private long timeLimitMillis = 30_000;
     private int workers = 1;
     private long seed = 0;
     private boolean verbose = false;
@@ -65,7 +65,11 @@ public final class RoutingCompiler {
     }
 
     /** Sets the wall-clock time budget for the search; default 30 seconds. */
-    public RoutingCompiler timeLimit(java.time.Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    public RoutingCompiler timeLimit(java.time.Duration limit) {
+        if (limit == null) throw new ModelException("timeLimit must not be null.");
+        this.timeLimitMillis = limit.toMillis();
+        return this;
+    }
     /** Sets the number of parallel search workers; default 1. */
     public RoutingCompiler workers(int n)                       { this.workers = n;                           return this; }
     /** Seeds the randomized local-search component for reproducibility. */
@@ -275,7 +279,10 @@ public final class RoutingCompiler {
                 .toBuilder()
                 .setFirstSolutionStrategy(mapStrategy(firstSolution))
                 .setLocalSearchMetaheuristic(mapMetaheuristic(metaheuristic))
-                .setTimeLimit(Duration.newBuilder().setSeconds(timeLimitSeconds).build());
+                .setTimeLimit(Duration.newBuilder()
+                        .setSeconds(timeLimitMillis / 1000)
+                        .setNanos((int) ((timeLimitMillis % 1000) * 1_000_000))
+                        .build());
         if (verbose) {
             builder.setLogSearch(true);
         }

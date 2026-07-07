@@ -22,7 +22,7 @@ public final class CpSatMultipleKnapsackSolver {
     private final List<ItemDef> items;
     private final List<BinDef> bins;
 
-    private long timeLimitSeconds = 60;
+    private double timeLimitSeconds = 60;
     private int workers = 1;
     private long seed = 0;
     private boolean verbose = false;
@@ -33,7 +33,11 @@ public final class CpSatMultipleKnapsackSolver {
     }
 
     /** Sets the maximum wall-clock time the solver may run before giving up. */
-    public CpSatMultipleKnapsackSolver timeLimit(Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    public CpSatMultipleKnapsackSolver timeLimit(Duration limit) {
+        if (limit == null) throw new ModelException("timeLimit must not be null.");
+        this.timeLimitSeconds = limit.toMillis() / 1000.0;
+        return this;
+    }
     /** Sets the number of parallel search workers (threads). */
     public CpSatMultipleKnapsackSolver workers(int n)            { this.workers = n;                            return this; }
     /** Sets the random seed used to make search reproducible. */

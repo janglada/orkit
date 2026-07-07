@@ -24,7 +24,7 @@ public final class CpSatSchedulingSolver {
     private final List<SoftGoal> softGoals;
     private final ObjectiveGoal objective;
 
-    private long timeLimitSeconds = 60;
+    private double timeLimitSeconds = 60;
     private int workers = 1;
     private long seed = 0;
     private boolean verbose = false;
@@ -47,7 +47,11 @@ public final class CpSatSchedulingSolver {
     }
 
     /** Sets the maximum wall-clock time the solver may run. */
-    public CpSatSchedulingSolver timeLimit(Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    public CpSatSchedulingSolver timeLimit(Duration limit) {
+        if (limit == null) throw new ModelException("timeLimit must not be null.");
+        this.timeLimitSeconds = limit.toMillis() / 1000.0;
+        return this;
+    }
     /** Sets the number of parallel CP-SAT worker threads. */
     public CpSatSchedulingSolver workers(int n)            { this.workers = n;                           return this; }
     /** Sets the random seed for CP-SAT's search randomness. */

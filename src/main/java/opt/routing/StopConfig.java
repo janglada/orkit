@@ -16,6 +16,8 @@ public final class StopConfig {
     int serviceTimeMin = 0;
     int openMin = 0;
     int closeMin = 24 * 60;
+    boolean openSet = false;
+    boolean closeSet = false;
 
     StopConfig() {}
 
@@ -35,6 +37,7 @@ public final class StopConfig {
 
     /** Sets the dwell time the vehicle spends at this stop before departing. */
     public StopConfig serviceTime(Duration duration) {
+        if (duration == null) throw new ModelException("serviceTime must not be null.");
         if (duration.isNegative()) throw new ModelException("serviceTime must be non-negative");
         this.serviceTimeMin = (int) duration.toMinutes();
         return this;
@@ -43,6 +46,7 @@ public final class StopConfig {
     /** Sets the earliest time-of-day the stop may be served; defaults to 00:00. */
     public StopConfig openFrom(LocalTime time) {
         this.openMin = time.toSecondOfDay() / 60;
+        this.openSet = true;
         validateWindow();
         return this;
     }
@@ -50,12 +54,14 @@ public final class StopConfig {
     /** Sets the latest time-of-day the stop may be served; defaults to 23:59 (end of day). */
     public StopConfig closeAt(LocalTime time) {
         this.closeMin = time.toSecondOfDay() / 60;
+        this.closeSet = true;
         validateWindow();
         return this;
     }
 
     private void validateWindow() {
-        if (openMin > 0 && closeMin < 24 * 60 && openMin >= closeMin) {
+        // When both bounds are explicitly set, the window must be strictly positive.
+        if (openSet && closeSet && openMin >= closeMin) {
             throw new ModelException(
                     "Time window is invalid: openFrom must be strictly before closeAt");
         }

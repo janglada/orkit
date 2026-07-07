@@ -761,4 +761,147 @@ class JobShopTest {
         // the setup is respected without increasing the makespan further.
         assertThat(schedule.makespan()).isEqualTo(22);
     }
+
+    // ── T-J33: Blank/null job id is rejected ─────────────────────────────────
+
+    @Test
+    void blankJobIdThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("", j -> j.operation().on("M1").takes(3))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("job id");
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("   ", j -> j.operation().on("M1").takes(3))
+                .solver().solve()).isInstanceOf(ModelException.class);
+    }
+
+    // ── T-J34: Duplicate job id is rejected ──────────────────────────────────
+
+    @Test
+    void duplicateJobIdThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(3))
+                .job("J1", j -> j.operation().on("M1").takes(2))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("Duplicate job id");
+    }
+
+    // ── T-J35: A job with no operations is rejected ──────────────────────────
+
+    @Test
+    void jobWithNoOperationsThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> {}) // never calls operation()
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("at least one operation");
+    }
+
+    // ── T-J36: Operation with no machine before .then() throws ───────────────
+
+    @Test
+    void operationWithNoMachineBeforeThenThrows() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().takes(3).then().on("M1").takes(2))
+                .solver().solve()).isInstanceOf(IllegalStateException.class);
+    }
+
+    // ── T-J37: Operation with no .takes() is rejected at commit ──────────────
+
+    @Test
+    void operationWithNoDurationThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1")) // no .takes()
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining(".takes(");
+    }
+
+    // ── T-J38: Negative duration is rejected ────────────────────────────────
+
+    @Test
+    void negativeDurationThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(-1))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining(">= 1");
+    }
+
+    // ── T-J39: onAnyOf with duplicate candidates is deduped then rejected ────
+
+    @Test
+    void onAnyOfDuplicateCandidatesThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1", "M2")
+                .job("J1", j -> j.operation().onAnyOf("M1", "M1").takes(3))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("at least 2 distinct");
+    }
+
+    // ── T-J40: type(null/blank) coerces to untyped (no setup applied) ────────
+
+    @Test
+    void blankTypeCoercesToUntyped() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .defaultSetupTime(5) // would apply between typed ops, but all are untyped here
+                .job("J1", j -> j.operation().on("M1").type(null).takes(2))
+                .job("J2", j -> j.operation().on("M1").type("").takes(2))
+                .job("J3", j -> j.operation().on("M1").type("   ").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        // All untyped => no setup => back-to-back, makespan = 6.
+        assertThat(schedule.makespan()).isEqualTo(6);
+        List<ScheduledOperation> ops = schedule.timelineOf("M1");
+        assertThat(ops.get(1).start() - ops.get(0).end()).isEqualTo(0);
+        assertThat(ops.get(2).start() - ops.get(1).end()).isEqualTo(0);
+    }
+
+    // ── T-J41: Unknown-machine/job accessors and empty Gantt rows ────────────
+
+    @Test
+    void unknownAccessorsReturnEmpty() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1", "M2")
+                .job("J1", j -> j.operation().on("M1").takes(3))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(schedule.timelineOf("NOPE")).isEmpty();
+        assertThat(schedule.operationsOf("NOPE")).isEmpty();
+        assertThat(schedule.asGantt().rowFor("M2")).isEmpty(); // M2 declared but unused
+    }
+
+    // ── T-J42: Setup-matrix validation edges ─────────────────────────────────
+
+    @Test
+    void negativeSetupTimesAreRejected() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1").defaultSetupTime(-1))
+                .isInstanceOf(ModelException.class).hasMessageContaining(">= 0");
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1").setupTimeOn("M1", "A", "B", -1))
+                .isInstanceOf(ModelException.class).hasMessageContaining(">= 0");
+    }
+
+    @Test
+    void initialTypeOnUnknownMachineOrBlankTypeThrows() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .initialTypeOn("NOPE", "A")
+                .job("J1", j -> j.operation().on("M1").takes(3))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("NOPE");
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1").initialTypeOn("M1", "  "))
+                .isInstanceOf(ModelException.class).hasMessageContaining("non-blank");
+    }
+
+    // ── T-J43: A setup pair declared twice keeps the last value ──────────────
+
+    @Test
+    void setupPairDeclaredTwiceKeepsLastValue() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .setupTime("A", "B", 100)
+                .setupTime("A", "B", 3)   // overwrites the 100 above
+                .setupTime("B", "A", 100) // makes A-first the cheaper direction
+                .job("J1", j -> j.operation().on("M1").type("A").takes(2))
+                .job("J2", j -> j.operation().on("M1").type("B").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        // A->B = 3 (overwritten) => A first, gap 3 => makespan 2 + 3 + 2 = 7.
+        // (If the 100 had won, both directions would cost 100 => makespan 104.)
+        assertThat(schedule.makespan()).isEqualTo(7);
+        List<ScheduledOperation> ops = schedule.timelineOf("M1");
+        assertThat(ops.get(0).job()).isEqualTo("J1"); // A first
+        assertThat(ops.get(1).start() - ops.get(0).end()).isEqualTo(3);
+    }
 }

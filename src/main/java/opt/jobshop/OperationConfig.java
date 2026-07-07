@@ -3,7 +3,9 @@ package opt.jobshop;
 import opt.ModelException;
 
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Fluent configurator for a single job operation.
@@ -38,10 +40,12 @@ public final class OperationConfig {
 
     /** Marks this operation as flexible, allowing it to run on any of the given candidate machines. */
     public OperationConfig onAnyOf(String... machines) {
-        if (machines.length < 2) {
-            throw new ModelException("onAnyOf() requires at least 2 candidate machines");
+        // Dedupe candidate machines while preserving declaration order.
+        Set<String> unique = new LinkedHashSet<>(Arrays.asList(machines));
+        if (unique.size() < 2) {
+            throw new ModelException("onAnyOf() requires at least 2 distinct candidate machines");
         }
-        this.machines = List.copyOf(Arrays.asList(machines));
+        this.machines = List.copyOf(unique);
         return this;
     }
 

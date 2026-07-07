@@ -22,6 +22,7 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
 
     private final Set<String> machines = new LinkedHashSet<>();
     private final List<JobDef> jobs = new ArrayList<>();
+    private final Set<String> jobIds = new LinkedHashSet<>();
 
     // ── Sequence-dependent setup state ──────────────────────────────────────
     // global: (fromType -> (toType -> setup))
@@ -34,7 +35,10 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
 
     /** Registers one or more machines that operations can be scheduled on. */
     public JobShopBuilder machines(String... machineIds) {
-        machines.addAll(Arrays.asList(machineIds));
+        for (String m : machineIds) {
+            requireNonBlank(m, "machine id");
+            machines.add(m);
+        }
         return this;
     }
 
@@ -43,6 +47,10 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
      * supplied lambda via {@link JobConfig}.
      */
     public JobShopBuilder job(String id, Consumer<JobConfig> config) {
+        requireNonBlank(id, "job id");
+        if (!jobIds.add(id)) {
+            throw new ModelException("Duplicate job id: '" + id + "'.");
+        }
         JobConfig cfg = new JobConfig();
         config.accept(cfg);
         cfg.commitPending();

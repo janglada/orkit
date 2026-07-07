@@ -719,4 +719,118 @@ class SchedulingTest {
 
         assertThat(roster.status()).isEqualTo(SolveStatus.INFEASIBLE);
     }
+
+    // ── T-S33: Blank employee/shift ids are rejected ─────────────────────────
+
+    @Test
+    void blankEmployeeAndShiftIdsThrowModelException() {
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .employee("", e -> e.skills("RN")))
+                .isInstanceOf(ModelException.class).hasMessageContaining("employee id");
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .shift("  ", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(1)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("shift id");
+    }
+
+    // ── T-S34: minRestBetweenShifts(null) is rejected ────────────────────────
+
+    @Test
+    void nullMinRestThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .constrain(minRestBetweenShifts(null)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("minRestBetweenShifts");
+    }
+
+    // ── T-S35: maxHoursPerWeek / needs / soft-goal boundaries ────────────────
+
+    @Test
+    void zeroOrNegativeBoundariesThrowModelException() {
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .employee("E", e -> e.maxHoursPerWeek(0))).isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .employee("E", e -> e.maxHoursPerWeek(-1))).isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(-1)))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .prefer(balanceWorkloadAcrossEmployees(0))).isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .prefer(honorEmployeePreferences(0))).isInstanceOf(ModelException.class);
+    }
+
+    // ── T-S36: Shift placement validation ────────────────────────────────────
+
+    @Test
+    void shiftCannotSpecifyBothDayOfWeekAndLocalDate() {
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).on(LocalDate.of(2026, 7, 6))
+                        .from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(1)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("not both");
+    }
+
+    @Test
+    void shiftDateOutsideHorizonThrows() {
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 5)
+                .employee("E", e -> e.skills("RN"))
+                .shift("s", s -> s.on(LocalDate.of(2026, 8, 1))
+                        .from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(1).withSkill("RN"))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("outside the horizon");
+    }
+
+    @Test
+    void shiftDayOfWeekNotInHorizonThrows() {
+        // MON is a Monday; a 5-day horizon is Mon–Fri, so SATURDAY does not occur.
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 5)
+                .employee("E", e -> e.skills("RN"))
+                .shift("s", s -> s.on(DayOfWeek.SATURDAY)
+                        .from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(1).withSkill("RN"))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("does not occur");
+    }
+
+    // ── T-S37: Empty employee/shift sets are rejected at solve time ──────────
+
+    @Test
+    void noEmployeesThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(1).withSkill("RN"))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("employee");
+    }
+
+    @Test
+    void noShiftsThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.scheduling().horizon(MON, 1)
+                .employee("E", e -> e.skills("RN"))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("shift");
+    }
+
+    // ── T-S38: No objective => satisfaction problem => objective() empty ─────
+
+    @Test
+    void noObjectiveLeavesObjectiveEmpty() {
+        var roster = Optimize.scheduling()
+                .horizon(MON, 1)
+                .employee("E", e -> e.skills("RN").costPerHour(30))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(1).withSkill("RN"))
+                .constrain(oneShiftPerEmployeePerDay())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.isFeasible()).isTrue();
+        assertThat(roster.objective()).isEmpty();
+    }
+
+    // ── T-S39: Unknown employee/shift accessors return empty ─────────────────
+
+    @Test
+    void unknownEmployeeAndShiftAccessorsReturnEmpty() {
+        var roster = Optimize.scheduling()
+                .horizon(MON, 1)
+                .employee("E", e -> e.skills("RN").costPerHour(30))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY)
+                        .from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(1).withSkill("RN"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(roster.shiftsFor("NOPE")).isEmpty();
+        assertThat(roster.staffOf("NOPE")).isEmpty();
+    }
 }

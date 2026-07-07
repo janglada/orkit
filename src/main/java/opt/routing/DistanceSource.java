@@ -1,5 +1,7 @@
 package opt.routing;
 
+import opt.ModelException;
+
 /**
  * Source for inter-node distances (in meters).
  * Create via the static factory methods.
@@ -23,6 +25,18 @@ public sealed interface DistanceSource
 
     /** Wraps a caller-supplied square distance matrix; row/column 0 is the depot. */
     static DistanceSource fromMatrix(long[][] metersMatrix) {
+        if (metersMatrix == null) {
+            throw new ModelException("Distance matrix must not be null.");
+        }
+        int n = metersMatrix.length;
+        if (n == 0) {
+            throw new ModelException("Distance matrix must be non-empty and square.");
+        }
+        for (long[] row : metersMatrix) {
+            if (row == null || row.length != n) {
+                throw new ModelException("Distance matrix must be square (N×N).");
+            }
+        }
         return new PrecomputedMatrix(metersMatrix);
     }
 }

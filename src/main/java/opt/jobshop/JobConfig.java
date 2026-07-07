@@ -1,5 +1,6 @@
 package opt.jobshop;
 
+import opt.ModelException;
 import opt.jobshop.internal.OperationDef;
 
 import java.util.ArrayList;
@@ -25,6 +26,10 @@ public final class JobConfig {
     void commitOperation(OperationConfig op) {
         if (op.machines() == null || op.machines().isEmpty()) {
             throw new IllegalStateException("Operation must specify a machine via .on() or .onAnyOf().");
+        }
+        if (op.duration() < 1) {
+            throw new ModelException(
+                    "Operation " + committed.size() + " must set a duration via .takes(...).");
         }
         committed.add(new OperationDef(committed.size(), op.machines(), op.duration(), op.type()));
     }

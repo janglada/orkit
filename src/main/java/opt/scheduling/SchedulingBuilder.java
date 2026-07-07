@@ -36,6 +36,9 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
 
     /** Declares an employee with the given unique id and configures it via the {@link EmployeeConfig} lambda. */
     public SchedulingBuilder employee(String id, Consumer<EmployeeConfig> config) {
+        if (id == null || id.isBlank()) {
+            throw new ModelException("employee id must be non-blank.");
+        }
         if (employees.containsKey(id)) {
             throw new ModelException("Duplicate employee id: " + id);
         }
@@ -55,6 +58,9 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
 
     /** Declares a shift with the given unique id and configures it via the {@link ShiftConfig} lambda. */
     public SchedulingBuilder shift(String id, Consumer<ShiftConfig> config) {
+        if (id == null || id.isBlank()) {
+            throw new ModelException("shift id must be non-blank.");
+        }
         if (shifts.containsKey(id)) {
             throw new ModelException("Duplicate shift id: " + id);
         }

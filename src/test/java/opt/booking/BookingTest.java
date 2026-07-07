@@ -224,4 +224,137 @@ class BookingTest {
                     .isLessThanOrEqualTo(b.startMinute());
         }
     }
+
+    // ── T-Bk13: horizon days boundary ───────────────────────────────────────
+
+    @Test
+    void horizonDaysLessThanOneThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 0))
+                .isInstanceOf(ModelException.class).hasMessageContaining(">= 1");
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), -1))
+                .isInstanceOf(ModelException.class);
+    }
+
+    // ── T-Bk14: earliest/latest without horizon is rejected ─────────────────
+
+    @Test
+    void timeBoundWithoutHorizonThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.booking()
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R")
+                        .earliest(LocalDateTime.of(2026, 1, 5, 9, 0)))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("horizon");
+    }
+
+    // ── T-Bk15: Multi-slot resource, malformed TimeSlot ─────────────────────
+
+    @Test
+    void multiSlotResourceThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> r
+                        .available(new TimeSlot(LocalDateTime.of(2026, 1, 5, 8, 0), LocalDateTime.of(2026, 1, 5, 9, 0)))
+                        .available(new TimeSlot(LocalDateTime.of(2026, 1, 5, 10, 0), LocalDateTime.of(2026, 1, 5, 11, 0))))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("multi-slot");
+    }
+
+    @Test
+    void malformedTimeSlotThrowsModelException() {
+        assertThatThrownBy(() -> new TimeSlot(
+                LocalDateTime.of(2026, 1, 5, 9, 0),
+                LocalDateTime.of(2026, 1, 5, 9, 0))).isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> new TimeSlot(
+                LocalDateTime.of(2026, 1, 5, 9, 0),
+                LocalDateTime.of(2026, 1, 5, 8, 0))).isInstanceOf(ModelException.class);
+    }
+
+    // ── T-Bk16: duration / penalty boundaries ───────────────────────────────
+
+    @Test
+    void durationAndPenaltyBoundaries() {
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofSeconds(59)).requiresAnyOf("R")))
+                .isInstanceOf(ModelException.class).hasMessageContaining(">= 1 minute");
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R").penaltyIfUnscheduled(-1)))
+                .isInstanceOf(ModelException.class).hasMessageContaining(">= 0");
+
+        // penalty 0 is allowed.
+        BookingSolution sol = Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R").penaltyIfUnscheduled(0))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.isFeasible()).isTrue();
+    }
+
+    // ── T-Bk17: Duplicate appointment id ────────────────────────────────────
+
+    @Test
+    void duplicateAppointmentIdThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R"))
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R")))
+                .isInstanceOf(ModelException.class).hasMessageContaining("Duplicate appointment id");
+    }
+
+    // ── T-Bk18: Time-window cross-validation ────────────────────────────────
+
+    @Test
+    void timeWindowCrossValidationThrowsModelException() {
+        // earliest + duration > latest
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R")
+                        .earliest(LocalDateTime.of(2026, 1, 5, 9, 0))
+                        .latest(LocalDateTime.of(2026, 1, 5, 9, 30))))
+                .isInstanceOf(ModelException.class).hasMessageContaining("exceeds latest");
+        // earliest before horizon start
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 6), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R")
+                        .earliest(LocalDateTime.of(2026, 1, 5, 9, 0)))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("before horizon start");
+        // earliest after horizon end
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R")
+                        .earliest(LocalDateTime.of(2026, 1, 7, 9, 0)))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("after horizon end");
+    }
+
+    // ── T-Bk19: goal(null) and unknown/blank resource references ─────────────
+
+    @Test
+    void nullGoalAndBadResourceReferencesThrowModelException() {
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R"))
+                .goal(null)).isInstanceOf(ModelException.class).hasMessageContaining("goal");
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("Nope"))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("unknown resource");
+        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("", "  ")))
+                .isInstanceOf(ModelException.class).hasMessageContaining("non-blank");
+    }
+
+    // ── T-Bk20: Unknown-resource accessor and multi-day horizon ─────────────
+
+    @Test
+    void unknownResourceAccessorEmptyAndMultiDayHorizon() {
+        BookingSolution sol = Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 2)
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R")
+                        .earliest(LocalDateTime.of(2026, 1, 6, 9, 0))) // day 2 of a 2-day horizon
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.isFeasible()).isTrue();
+        assertThat(sol.assignmentsOn("NOPE")).isEmpty();
+        // Appointment placed on day 2 => start minute >= 24*60 = 1440.
+        assertThat(sol.assignments()).hasSize(1);
+        assertThat(sol.assignments().get(0).startMinute()).isGreaterThanOrEqualTo(24 * 60);
+    }
 }

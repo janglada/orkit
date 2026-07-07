@@ -16,7 +16,7 @@ public final class CpSatJobShopSolver {
     private final List<JobDef> jobs;
     private final SetupMatrix setupMatrix;
 
-    private long timeLimitSeconds = 60;
+    private double timeLimitSeconds = 60;
     private int workers = 1;
     private long seed = 0;
     private boolean verbose = false;
@@ -40,7 +40,11 @@ public final class CpSatJobShopSolver {
     }
 
     /** Sets the maximum time the CP-SAT solver may run. */
-    public CpSatJobShopSolver timeLimit(Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    public CpSatJobShopSolver timeLimit(Duration limit) {
+        if (limit == null) throw new ModelException("timeLimit must not be null.");
+        this.timeLimitSeconds = limit.toMillis() / 1000.0;
+        return this;
+    }
     /** Sets the number of parallel search workers. */
     public CpSatJobShopSolver workers(int n)            { this.workers = n;                            return this; }
     /** Sets the random seed for the CP-SAT search. */

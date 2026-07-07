@@ -24,6 +24,9 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
 
     /** Declares a knapsack (bin) with the given unique id and configures it via the {@link BinConfig} lambda. */
     public MultipleKnapsackBuilder bin(String id, Consumer<BinConfig> config) {
+        if (id == null || id.isBlank()) {
+            throw new ModelException("bin id must be non-blank.");
+        }
         if (!binIds.add(id)) {
             throw new ModelException("Duplicate bin id: '" + id + "'.");
         }
@@ -38,6 +41,9 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
 
     /** Declares an item with the given unique id and configures it via the {@link ItemConfig} lambda. */
     public MultipleKnapsackBuilder item(String id, Consumer<ItemConfig> config) {
+        if (id == null || id.isBlank()) {
+            throw new ModelException("item id must be non-blank.");
+        }
         if (!itemIds.add(id)) {
             throw new ModelException("Duplicate item id: '" + id + "'.");
         }

@@ -279,4 +279,87 @@ class MultipleKnapsackTest {
             }
         }
     }
+
+    // ── T-Kn13: Duplicate item id is rejected ───────────────────────────────
+
+    @Test
+    void duplicateItemIdThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.multipleKnapsack()
+                .bin("B", b -> b.capacity(10))
+                .item("I", i -> i.profit(5).weight(3))
+                .item("I", i -> i.profit(4).weight(2))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("Duplicate item id");
+    }
+
+    // ── T-Kn14: Negative capacity / profit / weight ─────────────────────────
+
+    @Test
+    void negativeValuesThrowModelException() {
+        assertThatThrownBy(() -> Optimize.multipleKnapsack().bin("B", b -> b.capacity(-1)))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> Optimize.multipleKnapsack()
+                .bin("B", b -> b.capacity(10))
+                .item("I", i -> i.profit(-1).weight(3))).isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> Optimize.multipleKnapsack()
+                .bin("B", b -> b.capacity(10))
+                .item("I", i -> i.profit(5).weight(-1))).isInstanceOf(ModelException.class);
+    }
+
+    // ── T-Kn15: Blank bin/item ids are rejected ─────────────────────────────
+
+    @Test
+    void blankIdsThrowModelException() {
+        assertThatThrownBy(() -> Optimize.multipleKnapsack()
+                .bin("", b -> b.capacity(10)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("bin id");
+        assertThatThrownBy(() -> Optimize.multipleKnapsack()
+                .bin("B", b -> b.capacity(10))
+                .item("", i -> i.profit(5).weight(3)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("item id");
+    }
+
+    // ── T-Kn16: Unknown accessors return null ───────────────────────────────
+
+    @Test
+    void unknownAccessorsReturnNull() {
+        MultipleKnapsackSolution sol = Optimize.multipleKnapsack()
+                .bin("B", b -> b.capacity(10))
+                .item("I", i -> i.profit(5).weight(3))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.binOf("NOPE")).isNull();
+        assertThat(sol.assignmentOf("NOPE")).isNull();
+    }
+
+    // ── T-Kn17: Empty declared bin appears in assignments() ─────────────────
+
+    @Test
+    void emptyBinAppearsInAssignments() {
+        MultipleKnapsackSolution sol = Optimize.multipleKnapsack()
+                .bin("B1", b -> b.capacity(10))
+                .bin("B2", b -> b.capacity(10)) // empty
+                .item("I", i -> i.profit(5).weight(3))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.assignments()).hasSize(2);
+        BinAssignment empty = sol.assignments().stream()
+                .filter(a -> a.items().isEmpty()).findFirst().orElseThrow();
+        assertThat(empty.usedCapacity()).isZero();
+        assertThat(empty.profit()).isZero();
+    }
+
+    // ── T-Kn18: Re-solve yields the same profit and objective ───────────────
+
+    @Test
+    void reusableBuildYieldsSameProfitAndObjective() {
+        var problem = Optimize.multipleKnapsack()
+                .bin("B1", b -> b.capacity(10))
+                .bin("B2", b -> b.capacity(10))
+                .item("I1", i -> i.profit(5).weight(4))
+                .item("I2", i -> i.profit(6).weight(5))
+                .item("I3", i -> i.profit(3).weight(2))
+                .build();
+        MultipleKnapsackSolution s1 = problem.solver().timeLimit(Duration.ofSeconds(5)).solve();
+        MultipleKnapsackSolution s2 = problem.solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(s1.totalProfit()).isEqualTo(s2.totalProfit());
+        assertThat(s1.objective()).isEqualTo(s2.objective());
+    }
 }

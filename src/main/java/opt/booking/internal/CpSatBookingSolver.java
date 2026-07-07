@@ -22,7 +22,7 @@ public final class CpSatBookingSolver {
     private final List<ResourceDef> resources;
     private final List<AppointmentDef> appointments;
 
-    private long timeLimitSeconds = 60;
+    private double timeLimitSeconds = 60;
     private int workers = 1;
     private long seed = 0;
     private boolean verbose = false;
@@ -38,7 +38,11 @@ public final class CpSatBookingSolver {
     }
 
     /** Sets the maximum time the CP-SAT solver may run. */
-    public CpSatBookingSolver timeLimit(Duration limit) { this.timeLimitSeconds = limit.toSeconds(); return this; }
+    public CpSatBookingSolver timeLimit(Duration limit) {
+        if (limit == null) throw new ModelException("timeLimit must not be null.");
+        this.timeLimitSeconds = limit.toMillis() / 1000.0;
+        return this;
+    }
     /** Sets the number of parallel search workers. */
     public CpSatBookingSolver workers(int n)            { this.workers = n;                            return this; }
     /** Sets the random seed for the CP-SAT search. */

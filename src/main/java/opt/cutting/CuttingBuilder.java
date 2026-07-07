@@ -30,6 +30,9 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
 
     /** Declares a stock roll type with the given unique id and configures it via the {@link StockConfig} lambda. */
     public CuttingBuilder stock(String id, Consumer<StockConfig> config) {
+        if (id == null || id.isBlank()) {
+            throw new ModelException("stock id must be non-blank.");
+        }
         if (!stockIds.add(id)) {
             throw new ModelException("Duplicate stock id: '" + id + "'.");
         }
@@ -44,6 +47,9 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
 
     /** Declares a required piece type with the given unique id and configures it via the {@link PieceConfig} lambda. */
     public CuttingBuilder required(String id, Consumer<PieceConfig> config) {
+        if (id == null || id.isBlank()) {
+            throw new ModelException("piece id must be non-blank.");
+        }
         if (!pieceIds.add(id)) {
             throw new ModelException("Duplicate piece id: '" + id + "'.");
         }

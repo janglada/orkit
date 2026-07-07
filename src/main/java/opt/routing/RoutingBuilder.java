@@ -7,7 +7,9 @@ import opt.routing.internal.StopDef;
 import opt.routing.internal.VehicleDef;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /** Fluent builder for vehicle routing problems. Entry point: {@code Optimize.vehicleRouting()}. */
@@ -18,6 +20,8 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     private double depotLon;
     private final List<VehicleDef> vehicles = new ArrayList<>();
     private final List<StopDef> stops       = new ArrayList<>();
+    private final Set<String> vehicleIds    = new LinkedHashSet<>();
+    private final Set<String> stopIds       = new LinkedHashSet<>();
     private DistanceSource distanceSource   = DistanceSource.haversine();
     private long droppingPenalty            = 0;
     private RoutingGoal goal                = new RoutingGoal.MinimizeTotalDistance();
@@ -25,6 +29,9 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
     /** Sets the depot location that every vehicle departs from and returns to. */
     public RoutingBuilder depot(String id, double lat, double lon) {
+        if (id == null || id.isBlank()) {
+            throw new ModelException("depot id must be non-blank.");
+        }
         this.depotId  = id;
         this.depotLat = lat;
         this.depotLon = lon;
@@ -33,6 +40,12 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
     /** Adds a single vehicle configured by the lambda, which receives a fresh {@link VehicleConfig}. */
     public RoutingBuilder vehicle(String id, Consumer<VehicleConfig> config) {
+        if (id == null || id.isBlank()) {
+            throw new ModelException("vehicle id must be non-blank.");
+        }
+        if (!vehicleIds.add(id)) {
+            throw new ModelException("Duplicate vehicle id: '" + id + "'.");
+        }
         VehicleConfig cfg = new VehicleConfig();
         cfg.id = id;
         config.accept(cfg);
@@ -50,6 +63,12 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
     /** Adds a stop (delivery/pickup node) configured by the lambda, which receives a fresh {@link StopConfig}. */
     public RoutingBuilder stop(String id, Consumer<StopConfig> config) {
+        if (id == null || id.isBlank()) {
+            throw new ModelException("stop id must be non-blank.");
+        }
+        if (!stopIds.add(id)) {
+            throw new ModelException("Duplicate stop id: '" + id + "'.");
+        }
         StopConfig cfg = new StopConfig();
         cfg.id = id;
         config.accept(cfg);
@@ -60,6 +79,9 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
     /** Sets how inter-node distances are sourced; defaults to {@link DistanceSource#haversine()}. */
     public RoutingBuilder distances(DistanceSource source) {
+        if (source == null) {
+            throw new ModelException("distances() must not be null.");
+        }
         this.distanceSource = source;
         return this;
     }

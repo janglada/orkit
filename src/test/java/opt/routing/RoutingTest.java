@@ -617,4 +617,178 @@ class RoutingTest {
 
         assertThat(plan.status()).isEqualTo(SolveStatus.INFEASIBLE);
     }
+
+    // ── T-R28: Blank depot/vehicle/stop ids are rejected ─────────────────────
+
+    @Test
+    void blankIdsThrowModelException() {
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("", 0, 0))
+                .isInstanceOf(ModelException.class).hasMessageContaining("depot id");
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0)
+                .vehicle("", v -> v.capacity(10)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("vehicle id");
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0)
+                .vehicle("V", v -> v.capacity(10))
+                .stop("", s -> s.at(0, 0).demand(4)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("stop id");
+    }
+
+    // ── T-R29: Duplicate vehicle/stop ids are rejected ───────────────────────
+
+    @Test
+    void duplicateIdsThrowModelException() {
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0)
+                .vehicle("V", v -> v.capacity(10))
+                .vehicle("V", v -> v.capacity(10))
+                .stop("S", s -> s.at(0, 0).demand(4)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("Duplicate vehicle id");
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0)
+                .vehicle("V", v -> v.capacity(10))
+                .stop("S", s -> s.at(0, 0).demand(4))
+                .stop("S", s -> s.at(0, 0).demand(4)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("Duplicate stop id");
+    }
+
+    // ── T-R30: vehicles(0, ...) leaves no vehicles and throws at solve ───────
+
+    @Test
+    void vehiclesZeroCountThrowsAtSolve() {
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0)
+                .vehicles(0, v -> v.capacity(10))
+                .stop("S", s -> s.at(0, 0).demand(4))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("vehicle");
+    }
+
+    // ── T-R31: serviceTime(null) rejected; 1-minute boundary accepted ────────
+
+    @Test
+    void serviceTimeNullAndBoundary() {
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0)
+                .vehicle("V", v -> v.capacity(10))
+                .stop("S", s -> s.at(0, 0).demand(4).serviceTime(null)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("serviceTime");
+
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .distances(DistanceSource.fromMatrix(new long[][]{{0, 100}, {100, 0}}))
+                .vehicle("V", v -> v.capacity(10))
+                .stop("S", s -> s.at(0, 0).demand(4).serviceTime(Duration.ofMinutes(1)))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+    }
+
+    // ── T-R32: Zero-width and inverted time windows are rejected ─────────────
+
+    @Test
+    void zeroWidthAndInvertedTimeWindowsThrowModelException() {
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0)
+                .vehicle("V", v -> v.capacity(10))
+                .stop("S", s -> s.at(0, 0).demand(4)
+                        .openFrom(LocalTime.of(0, 0)).closeAt(LocalTime.of(0, 0))))
+                .isInstanceOf(ModelException.class).hasMessageContaining("strictly before");
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0)
+                .vehicle("V", v -> v.capacity(10))
+                .stop("S", s -> s.at(0, 0).demand(4)
+                        .openFrom(LocalTime.of(12, 0)).closeAt(LocalTime.of(12, 0))))
+                .isInstanceOf(ModelException.class).hasMessageContaining("strictly before");
+    }
+
+    // ── T-R33: maxDistanceMeters / travelSpeedKmh boundaries ─────────────────
+
+    @Test
+    void negativeMaxDistanceAndSpeedThrowModelException() {
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0)
+                .vehicle("V", v -> v.maxDistanceMeters(-1)))
+                .isInstanceOf(ModelException.class).hasMessageContaining(">= 0");
+        assertThatThrownBy(() -> Optimize.vehicleRouting().travelSpeedKmh(0))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> Optimize.vehicleRouting().travelSpeedKmh(-1))
+                .isInstanceOf(ModelException.class);
+    }
+
+    // ── T-R34: distances(null) and malformed matrices are rejected ───────────
+
+    @Test
+    void nullAndMalformedMatricesThrowModelException() {
+        assertThatThrownBy(() -> Optimize.vehicleRouting().depot("D", 0, 0).distances(null))
+                .isInstanceOf(ModelException.class).hasMessageContaining("distances");
+        assertThatThrownBy(() -> DistanceSource.fromMatrix(null))
+                .isInstanceOf(ModelException.class).hasMessageContaining("null");
+        assertThatThrownBy(() -> DistanceSource.fromMatrix(new long[][]{{0, 1}, {1}}))
+                .isInstanceOf(ModelException.class).hasMessageContaining("square");
+        assertThatThrownBy(() -> DistanceSource.fromMatrix(new long[0][]))
+                .isInstanceOf(ModelException.class);
+    }
+
+    // ── T-R35: allowDroppingStops(0) disables dropping; positive drops ───────
+
+    @Test
+    void zeroPenaltyDisablesDroppingPositivePenaltyDrops() {
+        // demand 100 > cap 10, no dropping => INFEASIBLE
+        RoutingPlan tight = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .distances(DistanceSource.fromMatrix(new long[][]{{0, 100}, {100, 0}}))
+                .vehicle("V", v -> v.capacity(10))
+                .allowDroppingStops(0)
+                .stop("S", s -> s.at(0, 0).demand(100))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(tight.status()).isEqualTo(SolveStatus.INFEASIBLE);
+
+        // same instance with dropping allowed => stop is dropped, feasible
+        RoutingPlan droppy = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .distances(DistanceSource.fromMatrix(new long[][]{{0, 100}, {100, 0}}))
+                .vehicle("V", v -> v.capacity(10))
+                .allowDroppingStops(1)
+                .stop("S", s -> s.at(0, 0).demand(100))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(droppy.isFeasible()).isTrue();
+        assertThat(droppy.unassignedStops()).containsExactly("S");
+    }
+
+    // ── T-R36: Idle vehicles are omitted; all-dropped yields no routes ───────
+
+    @Test
+    void idleVehiclesOmittedAndAllDroppedYieldsNoRoutes() {
+        // Two vehicles, one stop => only one vehicle used; the idle one is omitted.
+        RoutingPlan oneRoute = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .distances(DistanceSource.fromMatrix(new long[][]{{0, 100}, {100, 0}}))
+                .vehicle("V1", v -> v.capacity(10))
+                .vehicle("V2", v -> v.capacity(10))
+                .stop("S", s -> s.at(0, 0).demand(4))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(oneRoute.routes()).hasSize(1);
+
+        // Two unservable stops with dropping => both dropped, no routes.
+        RoutingPlan allDropped = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .distances(DistanceSource.fromMatrix(
+                        new long[][]{{0, 100, 100}, {100, 0, 100}, {100, 100, 0}}))
+                .vehicle("V", v -> v.capacity(10))
+                .allowDroppingStops(1)
+                .stop("S1", s -> s.at(0, 0).demand(100))
+                .stop("S2", s -> s.at(0, 0).demand(100))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(allDropped.isFeasible()).isTrue();
+        assertThat(allDropped.unassignedStops()).hasSize(2);
+        assertThat(allDropped.routes()).isEmpty();
+    }
+
+    // ── T-R37: Capacity exactly met is feasible ──────────────────────────────
+
+    @Test
+    void capacityExactlyMetIsFeasible() {
+        // cap 10, two stops of demand 5 each => sum == capacity, must be feasible.
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .distances(DistanceSource.fromMatrix(
+                        new long[][]{{0, 100, 100}, {100, 0, 100}, {100, 100, 0}}))
+                .vehicle("V", v -> v.capacity(10))
+                .stop("S1", s -> s.at(0, 0).demand(5))
+                .stop("S2", s -> s.at(0, 0).demand(5))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.unassignedStops()).isEmpty();
+    }
 }

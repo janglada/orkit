@@ -1,5 +1,7 @@
 package opt.scheduling;
 
+import opt.ModelException;
+
 import java.time.Duration;
 
 /** Factory for hard scheduling constraints. */
@@ -7,6 +9,7 @@ public final class Rules {
 
     /** Creates a {@link Rule} requiring the given minimum rest gap between any two shifts of an employee. */
     public static Rule minRestBetweenShifts(Duration minRest) {
+        if (minRest == null) throw new ModelException("minRestBetweenShifts must not be null.");
         return new Rule.MinRestBetweenShifts(minRest);
     }
 

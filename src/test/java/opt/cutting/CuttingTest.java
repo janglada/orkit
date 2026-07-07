@@ -266,4 +266,77 @@ class CuttingTest {
             }
         }
     }
+
+    // ── T-Ct13: No pieces / duplicate piece id / null goal ──────────────────
+
+    @Test
+    void noPiecesDuplicatePieceAndNullGoalThrowModelException() {
+        assertThatThrownBy(() -> new CuttingBuilder().stock("S", s -> s.length(100)).build())
+                .isInstanceOf(ModelException.class).hasMessageContaining("piece");
+        assertThatThrownBy(() -> new CuttingBuilder()
+                .stock("S", s -> s.length(100))
+                .required("P", p -> p.length(40))
+                .required("P", p -> p.length(30))
+                .build()).isInstanceOf(ModelException.class).hasMessageContaining("Duplicate piece id");
+        assertThatThrownBy(() -> new CuttingBuilder().minimize(null))
+                .isInstanceOf(ModelException.class).hasMessageContaining("goal");
+    }
+
+    // ── T-Ct14: cost / quantity / length boundaries ─────────────────────────
+
+    @Test
+    void zeroOrNegativeCostQuantityLengthThrowModelException() {
+        assertThatThrownBy(() -> new CuttingBuilder().stock("S", s -> s.length(100).cost(0)))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> new CuttingBuilder().stock("S", s -> s.length(100).cost(-1)))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> new CuttingBuilder().stock("S", s -> s.length(100).quantity(0)))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> new CuttingBuilder()
+                .stock("S", s -> s.length(100))
+                .required("P", p -> p.length(40).quantity(-1))).isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> new CuttingBuilder().stock("S", s -> s.length(-1)))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> new CuttingBuilder()
+                .stock("S", s -> s.length(100))
+                .required("P", p -> p.length(-1))).isInstanceOf(ModelException.class);
+    }
+
+    // ── T-Ct15: Blank stock/piece ids are rejected ──────────────────────────
+
+    @Test
+    void blankIdsThrowModelException() {
+        assertThatThrownBy(() -> new CuttingBuilder().stock("", s -> s.length(100)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("stock id");
+        assertThatThrownBy(() -> new CuttingBuilder()
+                .stock("S", s -> s.length(100))
+                .required("", p -> p.length(40))).isInstanceOf(ModelException.class).hasMessageContaining("piece id");
+    }
+
+    // ── T-Ct16: Exact-fit boundary (piece length == stock length) ───────────
+
+    @Test
+    void exactFitSinglePieceEqualsRollLength() {
+        CuttingSolution sol = new CuttingBuilder()
+                .stock("S", s -> s.length(50))
+                .required("P", p -> p.length(50))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(sol.totalStockUsed()).isEqualTo(1);
+        assertThat(sol.totalWaste()).isEqualTo(0);
+    }
+
+    // ── T-Ct17: Synthesized "<length>#<N>" id format ────────────────────────
+
+    @Test
+    void synthesizedIdsUseLengthCounterFormat() {
+        CuttingSolution sol = new CuttingBuilder()
+                .stock("S", s -> s.length(100))
+                .required("P", p -> p.length(40))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        StockAssignment roll = sol.assignments().stream()
+                .filter(a -> !a.pieces().isEmpty()).findFirst().orElseThrow();
+        assertThat(roll.stockId()).isEqualTo("100#1");
+        assertThat(roll.pieces().get(0).pieceId()).isEqualTo("40#1");
+    }
 }

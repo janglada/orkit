@@ -40,6 +40,11 @@ public final class AppointmentConfig {
         if (ids == null || ids.length == 0) {
             throw new ModelException("requiresAnyOf() requires at least one resource id.");
         }
+        for (String id : ids) {
+            if (id == null || id.isBlank()) {
+                throw new ModelException("requiresAnyOf() resource id must be non-blank.");
+            }
+        }
         this.resourceIds = ids.clone();
         return this;
     }

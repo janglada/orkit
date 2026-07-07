@@ -292,4 +292,123 @@ class PackingTest {
                     .isLessThanOrEqualTo(a.maxWeight());
         }
     }
+
+    // ── T-Pk13: Negative dimensions/weights are rejected ────────────────────
+
+    @Test
+    void negativeDimensionsThrowModelException() {
+        assertThatThrownBy(() -> new PackingBuilder().container("C", c -> c.length(-1)))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(-1)))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> new PackingBuilder().box("B", b -> b.length(-1)))
+                .isInstanceOf(ModelException.class);
+        assertThatThrownBy(() -> new PackingBuilder()
+                .box("B", b -> b.length(2).width(2).height(2).weight(-1)))
+                .isInstanceOf(ModelException.class);
+    }
+
+    // ── T-Pk14: Blank container/box ids are rejected ────────────────────────
+
+    @Test
+    void blankIdsThrowModelException() {
+        assertThatThrownBy(() -> new PackingBuilder()
+                .container("", c -> c.length(10).width(10).height(10).maxWeight(10)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("container id");
+        assertThatThrownBy(() -> new PackingBuilder()
+                .box("", b -> b.length(2).width(2).height(2).weight(1)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("box id");
+    }
+
+    // ── T-Pk15: goal(null) is rejected ──────────────────────────────────────
+
+    @Test
+    void nullGoalThrowsModelException() {
+        assertThatThrownBy(() -> new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(10))
+                .box("B", b -> b.length(2).width(2).height(2).weight(1))
+                .goal(null)).isInstanceOf(ModelException.class).hasMessageContaining("goal");
+    }
+
+    // ── T-Pk16: Single box, single container; exact-fit boundary ────────────
+
+    @Test
+    void singleBoxSingleContainerAndExactFitBoundary() {
+        PackingSolution trivial = new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(10))
+                .box("B", b -> b.length(2).width(2).height(2).weight(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(trivial.isFeasible()).isTrue();
+        assertThat(trivial.containersUsed()).isEqualTo(1);
+
+        // Box dimensions exactly equal the container on every axis must still fit.
+        PackingSolution exact = new PackingBuilder()
+                .container("C", c -> c.length(5).width(5).height(5).maxWeight(10))
+                .box("B", b -> b.length(5).width(5).height(5).weight(5))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(exact.unassignedBoxes()).isEmpty();
+        assertThat(exact.containerOf("B")).isEqualTo("C");
+    }
+
+    // ── T-Pk17: Default goal minimizes containers used ───────────────────────
+
+    @Test
+    void defaultGoalMinimizesContainersUsed() {
+        // No .goal(...) call: default is minimizeContainersUsed => both boxes in 1 container.
+        PackingSolution sol = new PackingBuilder()
+                .container("C1", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .container("C2", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .box("B1", b -> b.length(2).width(2).height(2).weight(1))
+                .box("B2", b -> b.length(2).width(2).height(2).weight(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.containersUsed()).isEqualTo(1);
+        assertThat(sol.unassignedBoxes()).isEmpty();
+    }
+
+    // ── T-Pk18: Empty declared container appears in assignments() ────────────
+
+    @Test
+    void emptyContainerAppearsInAssignments() {
+        PackingSolution sol = new PackingBuilder()
+                .container("C1", c -> c.length(10).width(10).height(10).maxWeight(10))
+                .container("C2", c -> c.length(10).width(10).height(10).maxWeight(10))
+                .box("B", b -> b.length(2).width(2).height(2).weight(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        // Both declared containers appear; exactly one is empty (solver picks which to fill).
+        assertThat(sol.assignments()).hasSize(2);
+        assertThat(sol.containersUsed()).isEqualTo(1);
+        long emptyCount = sol.assignments().stream().filter(a -> a.boxes().isEmpty()).count();
+        assertThat(emptyCount).isEqualTo(1);
+        ContainerAssignment empty = sol.assignments().stream()
+                .filter(a -> a.boxes().isEmpty()).findFirst().orElseThrow();
+        assertThat(empty.usedVolume()).isZero();
+        assertThat(empty.usedWeight()).isZero();
+    }
+
+    // ── T-Pk19: Unknown accessors return null ───────────────────────────────
+
+    @Test
+    void unknownAccessorsReturnNull() {
+        PackingSolution sol = new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(10))
+                .box("B", b -> b.length(2).width(2).height(2).weight(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.assignmentOf("NOPE")).isNull();
+        assertThat(sol.containerOf("NOPE")).isNull();
+    }
+
+    // ── T-Pk20: Re-solve yields the same objective ──────────────────────────
+
+    @Test
+    void reusableBuildYieldsSameObjective() {
+        var problem = new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .box("B1", b -> b.length(2).width(2).height(2).weight(1))
+                .box("B2", b -> b.length(3).width(3).height(3).weight(2))
+                .build();
+        PackingSolution s1 = problem.solver().timeLimit(Duration.ofSeconds(5)).solve();
+        PackingSolution s2 = problem.solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(s1.objective()).isEqualTo(s2.objective());
+    }
 }
