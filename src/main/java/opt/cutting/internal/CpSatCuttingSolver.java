@@ -93,9 +93,7 @@ public final class CpSatCuttingSolver {
         // Each piece is REQUIRED: assigned to exactly one roll.
         for (int p = 0; p < P; p++) {
             BoolVar[] row = new BoolVar[R];
-            for (int r = 0; r < R; r++) {
-                row[r] = x[p][r];
-            }
+            System.arraycopy(x[p], 0, row, 0, R);
             model.addEquality(buildWeightedSum(row, ones(R)), 1);
         }
 

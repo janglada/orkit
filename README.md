@@ -68,6 +68,39 @@ JobShopSchedule schedule = Optimize.jobShop()
 System.out.println(schedule.status() + " makespan=" + schedule.makespan());
 ```
 
+#### Sequence-dependent setup times
+
+Operations may carry a setup *type* via `.type(...)`, and the builder accepts a
+changeover matrix. When a machine switches from an operation of type `A` to one
+of type `B`, the gap between them is at least `setup(A, B)`.
+
+```java
+JobShopSchedule schedule = Optimize.jobShop()
+        .machines("MILL", "LATHE")
+        .setupTime("ALU", "STEEL", 12)           // global: every machine
+        .setupTime("STEEL", "ALU", 8)            // asymmetric pairs are allowed
+        .setupTimeOn("MILL", "ALU", "STEEL", 20) // machine-specific override
+        .defaultSetupTime(5)                     // any unlisted type change
+        .initialTypeOn("MILL", "STEEL")          // machine's pre-horizon type
+        .job("J1", j -> j.operation().on("MILL").type("ALU").takes(10)
+                .then().on("LATHE").type("STEEL").takes(15))
+        .job("J2", j -> j.operation().on("LATHE").type("ALU").takes(8))
+        .solver().timeLimit(Duration.ofSeconds(15)).solve();
+```
+
+Resolution for a transition `fromType → toType` on machine `M`:
+
+1. either side untyped → `0` (`defaultSetupTime` is **never** applied to untyped ops);
+2. same typed pair → machine-specific `(T,T)` → global `(T,T)` → `0` (no default);
+3. different typed pair → machine-specific → global → `defaultSetupTime` → `0`.
+
+Notes: setup entries must be non-negative; `setupTimeOn`/`initialTypeOn` must
+reference declared machines (fails fast with `ModelException`); a matrix type
+not used by any operation logs a warning to `stderr` (matrices may be shared
+across models). Flexible (`onAnyOf`) typed operations pay the setup of whichever
+machine they land on. With no setup matrix configured, the model behaves exactly
+as before (plain `NoOverlap` per machine).
+
 ### Employee shift scheduling
 
 ```java

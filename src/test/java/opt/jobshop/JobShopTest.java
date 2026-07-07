@@ -5,6 +5,8 @@ import opt.Optimize;
 import opt.SolveStatus;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.time.Duration;
 import java.util.List;
 
@@ -428,5 +430,335 @@ class JobShopTest {
         for (String machine : List.of("MA", "MB", "MC", "MD")) {
             assertNoOverlap(schedule.timelineOf(machine), machine);
         }
+    }
+
+    // ── T-J20: Basic sequence-dependent setup, asymmetric pair ────────────────
+    // Two jobs on one machine: J1 type ALU (dur 4), J2 type STEEL (dur 5).
+    // setup ALU->STEEL = 12, STEEL->ALU = 8. Optimal order: STEEL first (gap 8)
+    // => makespan = 5 + 8 + 4 = 17.
+
+    @Test
+    void setupTimeAppliedBetweenAdjacentTypedOps() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .setupTime("ALU", "STEEL", 12)
+                .setupTime("STEEL", "ALU", 8)
+                .job("J1", j -> j.operation().on("M1").type("ALU").takes(4))
+                .job("J2", j -> j.operation().on("M1").type("STEEL").takes(5))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(schedule.makespan()).isEqualTo(17);
+
+        List<ScheduledOperation> ops = schedule.timelineOf("M1");
+        assertThat(ops).hasSize(2);
+        // Cheaper direction STEEL -> ALU is chosen: STEEL op first, gap = 8.
+        assertThat(ops.get(0).job()).isEqualTo("J2");
+        assertThat(ops.get(1).job()).isEqualTo("J1");
+        long gap = ops.get(1).start() - ops.get(0).end();
+        assertThat(gap).as("changeover gap should be STEEL->ALU = 8").isEqualTo(8);
+    }
+
+    // ── T-J21: defaultSetupTime applies to unlisted typed pairs ───────────────
+
+    @Test
+    void defaultSetupTimeAppliedToUnlistedTypedPair() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .defaultSetupTime(5)
+                .job("J1", j -> j.operation().on("M1").type("A").takes(2))
+                .job("J2", j -> j.operation().on("M1").type("B").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(schedule.makespan()).isEqualTo(2 + 5 + 2);
+        List<ScheduledOperation> ops = schedule.timelineOf("M1");
+        assertThat(ops.get(1).start() - ops.get(0).end()).isEqualTo(5);
+    }
+
+    // ── T-J22: untyped operations never pay setup (default not applied) ──────
+
+    @Test
+    void untypedOperationsPayNoSetup() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .defaultSetupTime(5)
+                .job("J1", j -> j.operation().on("M1").type("A").takes(2))
+                .job("J2", j -> j.operation().on("M1").takes(2)) // untyped
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(schedule.makespan()).isEqualTo(2 + 0 + 2);
+        List<ScheduledOperation> ops = schedule.timelineOf("M1");
+        assertThat(ops.get(1).start() - ops.get(0).end()).isEqualTo(0);
+    }
+
+    // ── T-J23: same-type transitions are zero unless an explicit (T,T) entry ──
+
+    @Test
+    void sameTypeTransitionIsZeroUnlessExplicit() {
+        // (a) No explicit (A,A) entry: same-type ops have zero gap even with a default.
+        JobShopSchedule noEntry = Optimize.jobShop()
+                .machines("M1")
+                .defaultSetupTime(5)
+                .job("J1", j -> j.operation().on("M1").type("A").takes(3))
+                .job("J2", j -> j.operation().on("M1").type("A").takes(3))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(noEntry.makespan()).isEqualTo(6);
+        assertThat(noEntry.timelineOf("M1").get(1).start()
+                - noEntry.timelineOf("M1").get(0).end()).isEqualTo(0);
+
+        // (b) Explicit (A,A) entry applies.
+        JobShopSchedule withEntry = Optimize.jobShop()
+                .machines("M1")
+                .setupTime("A", "A", 4)
+                .job("J1", j -> j.operation().on("M1").type("A").takes(3))
+                .job("J2", j -> j.operation().on("M1").type("A").takes(3))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(withEntry.makespan()).isEqualTo(3 + 4 + 3);
+        assertThat(withEntry.timelineOf("M1").get(1).start()
+                - withEntry.timelineOf("M1").get(0).end()).isEqualTo(4);
+    }
+
+    // ── T-J24: initialTypeOn makes the first operation pay a setup ────────────
+
+    @Test
+    void initialTypeAppliesSetupToFirstOperation() {
+        // With an initial type B != A, the first (and only) op pays setup B->A = 8.
+        JobShopSchedule withInitial = Optimize.jobShop()
+                .machines("M1")
+                .setupTime("B", "A", 8)
+                .initialTypeOn("M1", "B")
+                .job("J1", j -> j.operation().on("M1").type("A").takes(5))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(withInitial.makespan()).isEqualTo(8 + 5);
+        assertThat(withInitial.operationsOf("J1").get(0).start()).isEqualTo(8);
+
+        // Without an initial type, the first op starts at 0.
+        JobShopSchedule noInitial = Optimize.jobShop()
+                .machines("M1")
+                .setupTime("B", "A", 8)
+                .job("J1", j -> j.operation().on("M1").type("A").takes(5))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(noInitial.makespan()).isEqualTo(5);
+        assertThat(noInitial.operationsOf("J1").get(0).start()).isEqualTo(0);
+    }
+
+    // ── T-J25: machine-specific setup overrides the global matrix ────────────
+
+    @Test
+    void machineSpecificSetupOverridesGlobal() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("MILL", "LATHE")
+                .setupTime("ALU", "STEEL", 12)              // global
+                .setupTimeOn("MILL", "ALU", "STEEL", 20)    // MILL override
+                .job("J1", j -> j.operation().on("MILL").type("ALU").takes(3)
+                        .then().on("MILL").type("STEEL").takes(3))
+                .job("J2", j -> j.operation().on("LATHE").type("ALU").takes(3)
+                        .then().on("LATHE").type("STEEL").takes(3))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        // MILL: 3 + 20 + 3 = 26 ; LATHE: 3 + 12 + 3 = 18 ; parallel => 26.
+        assertThat(schedule.makespan()).isEqualTo(26);
+        List<ScheduledOperation> mill = schedule.timelineOf("MILL");
+        List<ScheduledOperation> lathe = schedule.timelineOf("LATHE");
+        assertThat(mill.get(1).start() - mill.get(0).end()).isEqualTo(20);
+        assertThat(lathe.get(1).start() - lathe.get(0).end()).isEqualTo(12);
+    }
+
+    // ── T-J26: flexible typed op pays setup on the chosen machine ────────────
+    // MILL changeover is made expensive (machine-specific 100), LATHE stays cheap
+    // (global 1). The flexible ALU op must land on LATHE to minimize makespan.
+
+    @Test
+    void flexibleTypedOpPaysSetupOnChosenMachine() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("MILL", "LATHE")
+                .setupTime("ALU", "STEEL", 1)
+                .setupTime("STEEL", "ALU", 1)
+                .setupTimeOn("MILL", "ALU", "STEEL", 100)
+                .setupTimeOn("MILL", "STEEL", "ALU", 100)
+                .job("J1", j -> j.operation().onAnyOf("MILL", "LATHE").type("ALU").takes(5))
+                .job("J2", j -> j.operation().on("MILL").type("STEEL").takes(5))
+                .job("J3", j -> j.operation().on("LATHE").type("STEEL").takes(5))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.isFeasible()).isTrue();
+        // Optimal: J1 -> LATHE, gap 1 there => makespan 5 + 1 + 5 = 11.
+        assertThat(schedule.makespan()).isEqualTo(11);
+        ScheduledOperation j1 = schedule.operationsOf("J1").get(0);
+        assertThat(j1.machine()).isEqualTo("LATHE");
+
+        List<ScheduledOperation> lathe = schedule.timelineOf("LATHE");
+        assertThat(lathe).hasSize(2);
+        assertThat(lathe.get(1).start() - lathe.get(0).end()).isEqualTo(1);
+        assertThat(schedule.timelineOf("MILL")).hasSize(1);
+    }
+
+    // ── T-J27: validation — negative setup, unknown machine, unused-type warn ─
+
+    @Test
+    void negativeSetupTimeThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.jobShop().machines("M1").setupTime("A", "B", -1)
+        ).isInstanceOf(ModelException.class).hasMessageContaining(">= 0");
+    }
+
+    @Test
+    void setupTimeOnUnknownMachineThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.jobShop()
+                        .machines("M1")
+                        .setupTimeOn("NOPE", "A", "B", 5)
+                        .job("J1", j -> j.operation().on("M1").takes(3))
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class).hasMessageContaining("NOPE");
+    }
+
+    @Test
+    void unusedMatrixTypeWarnsOnStderr() {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        System.setErr(new PrintStream(err));
+        try {
+            Optimize.jobShop()
+                    .machines("M1")
+                    .setupTime("FOO", "BAR", 5)            // neither used
+                    .job("J1", j -> j.operation().on("M1").type("ALU").takes(3))
+                    .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        } finally {
+            System.setErr(originalErr);
+        }
+        String captured = err.toString();
+        assertThat(captured).contains("FOO");
+        assertThat(captured).contains("BAR");
+    }
+
+    // ── T-J28: backward-compat — types without a matrix behave as no setups ──
+
+    @Test
+    void typedOpsWithoutSetupMatrixBehaveAsNoSetups() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .job("J1", j -> j.operation().on("M1").type("A").takes(3))
+                .job("J2", j -> j.operation().on("M1").type("B").takes(3))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        // No setup matrix => plain NoOverlap => back-to-back, makespan = 6, gap 0.
+        assertThat(schedule.makespan()).isEqualTo(6);
+        List<ScheduledOperation> ops = schedule.timelineOf("M1");
+        assertThat(ops.get(1).start() - ops.get(0).end()).isEqualTo(0);
+    }
+
+    // ── T-J29: Asymmetric matrix — solver picks the cheaper order ────────────
+    // A->B = 10, B->A = 2, both ops otherwise symmetric (dur 5). Optimal order
+    // is B first (gap 2) => makespan = 5 + 2 + 5 = 12 (vs 20 the other way).
+
+    @Test
+    void asymmetricMatrixPicksCheaperOrder() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .setupTime("A", "B", 10)
+                .setupTime("B", "A", 2)
+                .job("J1", j -> j.operation().on("M1").type("A").takes(5))
+                .job("J2", j -> j.operation().on("M1").type("B").takes(5))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(schedule.makespan()).isEqualTo(12);
+
+        List<ScheduledOperation> ops = schedule.timelineOf("M1");
+        assertThat(ops.get(0).job()).isEqualTo("J2"); // B first
+        assertThat(ops.get(1).job()).isEqualTo("J1");
+        long gap = ops.get(1).start() - ops.get(0).end();
+        assertThat(gap).as("gap should be the cheaper B->A = 2").isEqualTo(2);
+    }
+
+    // ── T-J30: Global entry wins over defaultSetupTime ───────────────────────
+    // A->B has a global entry (3); default is 10. The optimal order is A first
+    // (gap 3 = global, not 10 = default) => makespan = 2 + 3 + 2 = 7.
+
+    @Test
+    void globalEntryWinsOverDefault() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .defaultSetupTime(10)
+                .setupTime("A", "B", 3)            // global, cheaper than default
+                .job("J1", j -> j.operation().on("M1").type("A").takes(2))
+                .job("J2", j -> j.operation().on("M1").type("B").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(schedule.makespan()).isEqualTo(2 + 3 + 2);
+
+        List<ScheduledOperation> ops = schedule.timelineOf("M1");
+        assertThat(ops.get(0).job()).isEqualTo("J1"); // A first to use the cheap global 3
+        long gap = ops.get(1).start() - ops.get(0).end();
+        assertThat(gap).as("gap should be global 3, not default 10").isEqualTo(3);
+    }
+
+    // ── T-J31: Flexible op with setups — lands on one machine, the other is bypassed
+    // Two identical machines; the flexible A op must land on one of them. Whichever
+    // it lands on pays the A<->B setup (gap 4); the other machine keeps only its
+    // fixed B op and pays nothing.
+
+    @Test
+    void flexibleOpLandsOnOneMachineOtherIsBypassed() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1", "M2")
+                .setupTime("A", "B", 4)
+                .setupTime("B", "A", 4)
+                .job("J1", j -> j.operation().onAnyOf("M1", "M2").type("A").takes(5))
+                .job("J2", j -> j.operation().on("M1").type("B").takes(5))
+                .job("J3", j -> j.operation().on("M2").type("B").takes(5))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        // Either landing yields 5 + 4 + 5 = 14 on the chosen machine; the other = 5.
+        assertThat(schedule.makespan()).isEqualTo(14);
+
+        String chosen = schedule.operationsOf("J1").get(0).machine();
+        String other  = chosen.equals("M1") ? "M2" : "M1";
+
+        List<ScheduledOperation> chosenRow = schedule.timelineOf(chosen);
+        List<ScheduledOperation> otherRow  = schedule.timelineOf(other);
+        assertThat(chosenRow).hasSize(2);
+        assertThat(otherRow).hasSize(1); // absent on the other machine => bypassed
+        assertThat(chosenRow.get(1).start() - chosenRow.get(0).end()).isEqualTo(4);
+        // The bypassed machine's lone op starts at 0 (no setup charged there).
+        assertThat(otherRow.get(0).start()).isEqualTo(0);
+    }
+
+    // ── T-J32: Gap is >= setup even when precedence forces a larger gap ──────
+    // J1.op0 runs on M2 (dur 20) then J1.op1 on M1 (type B); J2.op0 on M1 (type A).
+    // J1.op1 cannot start before 20 (precedence from the M2 op). The M1 gap between
+    // the A op and the B op is at least setup A->B = 3 (it may be larger when the
+    // solver packs loosely, but never smaller). Makespan is pinned at 22 by J1.
+
+    @Test
+    void gapRespectsSetupLowerBoundWhenPrecedenceForcesLateStart() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1", "M2")
+                .setupTime("A", "B", 3)
+                .job("J1", j -> j.operation().on("M2").type("X").takes(20)
+                        .then().on("M1").type("B").takes(2))
+                .job("J2", j -> j.operation().on("M1").type("A").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+
+        List<ScheduledOperation> m1 = schedule.timelineOf("M1");
+        assertThat(m1).hasSize(2);
+        // J2.op0 (A) runs first, J1.op1 (B) second (the only optimal order).
+        ScheduledOperation a = m1.get(0);
+        ScheduledOperation b = m1.get(1);
+        assertThat(a.job()).isEqualTo("J2");
+        assertThat(b.job()).isEqualTo("J1");
+        long gap = b.start() - a.end();
+        assertThat(gap).as("gap must be >= setup A->B = 3").isGreaterThanOrEqualTo(3);
+        // J1.op1.start >= 20 (precedence) and dur 2 => makespan pinned at 22;
+        // the setup is respected without increasing the makespan further.
+        assertThat(schedule.makespan()).isEqualTo(22);
     }
 }

@@ -9,7 +9,9 @@ public record OperationDef(
         /** Single machine, or multiple candidates for flexible job shop. */
         List<String> machines,
         /** Processing duration in model time units. */
-        int duration
+        int duration,
+        /** Setup type tag used for sequence-dependent changeover; {@code null} if untyped. */
+        String type
 ) {
     /** Returns {@code true} if this operation may run on more than one candidate machine. */
     public boolean isFlexible() {

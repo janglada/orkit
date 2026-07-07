@@ -26,7 +26,7 @@ public final class JobConfig {
         if (op.machines() == null || op.machines().isEmpty()) {
             throw new IllegalStateException("Operation must specify a machine via .on() or .onAnyOf().");
         }
-        committed.add(new OperationDef(committed.size(), op.machines(), op.duration()));
+        committed.add(new OperationDef(committed.size(), op.machines(), op.duration(), op.type()));
     }
 
     /** Called by the builder after the lambda returns to commit the last pending operation. */

@@ -14,6 +14,7 @@ public final class OperationConfig {
     private final JobConfig job;
     private List<String> machines;
     private int duration;
+    private String type;
 
     OperationConfig(JobConfig job) {
         this.job = job;
@@ -22,6 +23,16 @@ public final class OperationConfig {
     /** Assigns this operation to a single fixed machine. */
     public OperationConfig on(String machine) {
         this.machines = List.of(machine);
+        return this;
+    }
+
+    /**
+     * Tags this operation with a setup type, so that sequence-dependent setup
+     * (changeover) times apply between adjacent operations of different types
+     * on the same machine. Operations without a type pay no setup.
+     */
+    public OperationConfig type(String type) {
+        this.type = (type == null || type.isBlank()) ? null : type;
         return this;
     }
 
@@ -55,5 +66,9 @@ public final class OperationConfig {
 
     int duration() {
         return duration;
+    }
+
+    String type() {
+        return type;
     }
 }
