@@ -90,6 +90,13 @@ public final class TestDatabase implements AutoCloseable {
         return ((Number) v).longValue();
     }
 
+    /** Returns a nullable numeric column as a {@code Long} ({@code null} when the SQL value is NULL). */
+    public static Long asNullableLong(Map<String, Object> row, String column) {
+        Object v = row.get(column);
+        if (v == null) return null;
+        return ((Number) v).longValue();
+    }
+
     /** Coerces a numeric column value to {@code int}. */
     public static int asInt(Map<String, Object> row, String column) {
         return (int) asLong(row, column);

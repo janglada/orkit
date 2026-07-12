@@ -23,6 +23,7 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
     private final Set<String> containerIds = new HashSet<>();
     private final Set<String> boxIds = new HashSet<>();
     private PackingGoal goal = new PackingGoal.MinimizeContainersUsed();
+    private boolean requireSupport = false;
 
     /** Declares a container with the given unique id and configures it via the {@link ContainerConfig} lambda. */
     public PackingBuilder container(String id, Consumer<ContainerConfig> config) {
@@ -68,7 +69,9 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
         if (cfg.weight() < 1) {
             throw new ModelException("Box '" + id + "' must set a weight via .weight(...).");
         }
-        boxes.add(new BoxDef(id, cfg.length(), cfg.width(), cfg.height(), cfg.weight()));
+        boxes.add(new BoxDef(id, cfg.length(), cfg.width(), cfg.height(), cfg.weight(),
+                cfg.rotatable(), cfg.maxStackedWeight(),
+                List.copyOf(cfg.aboveIds()), List.copyOf(cfg.belowIds())));
         return this;
     }
 
@@ -79,9 +82,20 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
         return this;
     }
 
+    /**
+     * Toggles the vertical support-footprint constraint. When enabled, every box that
+     * rests on top of another must have its XY footprint fully contained within the
+     * supporting box below it (no floating boxes). Disabled by default, which preserves
+     * the classical no-overlap-only packing model.
+     */
+    public PackingBuilder requireSupport(boolean requireSupport) {
+        this.requireSupport = requireSupport;
+        return this;
+    }
+
     /** Builds an immutable, reusable problem instance. */
     public OptimizationProblem<PackingSolution> build() {
-        return new PackingProblem(List.copyOf(containers), List.copyOf(boxes), goal);
+        return new PackingProblem(List.copyOf(containers), List.copyOf(boxes), goal, requireSupport);
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
@@ -97,16 +111,19 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
         private final List<ContainerDef> containers;
         private final List<BoxDef> boxes;
         private final PackingGoal goal;
+        private final boolean requireSupport;
 
-        PackingProblem(List<ContainerDef> containers, List<BoxDef> boxes, PackingGoal goal) {
+        PackingProblem(List<ContainerDef> containers, List<BoxDef> boxes,
+                       PackingGoal goal, boolean requireSupport) {
             this.containers = containers;
             this.boxes = boxes;
             this.goal = goal;
+            this.requireSupport = requireSupport;
         }
 
         @Override
         public Solver<PackingSolution> solver() {
-            return new PackingSolver(containers, boxes, goal);
+            return new PackingSolver(containers, boxes, goal, requireSupport);
         }
     }
 
@@ -115,25 +132,28 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
         private final List<ContainerDef> containers;
         private final List<BoxDef> boxes;
         private final PackingGoal goal;
+        private final boolean requireSupport;
         private Duration timeLimit = Duration.ofMinutes(1);
         private int workers = 1;
         private long seed = 0;
         private boolean verbose = false;
 
-        PackingSolver(List<ContainerDef> containers, List<BoxDef> boxes, PackingGoal goal) {
+        PackingSolver(List<ContainerDef> containers, List<BoxDef> boxes,
+                      PackingGoal goal, boolean requireSupport) {
             this.containers = containers;
             this.boxes = boxes;
             this.goal = goal;
+            this.requireSupport = requireSupport;
         }
 
-        @Override public Solver<PackingSolution> timeLimit(Duration limit) { timeLimit = limit; return this; }
-        @Override public Solver<PackingSolution> workers(int threads)       { workers = threads;  return this; }
-        @Override public Solver<PackingSolution> seed(long randomSeed)      { seed = randomSeed;  return this; }
-        @Override public Solver<PackingSolution> verbose(boolean log)       { verbose = log;      return this; }
+        @Override public Solver<PackingSolution> timeLimit(Duration limit) { timeLimit = limit;    return this; }
+        @Override public Solver<PackingSolution> workers(int threads)     { workers = threads;    return this; }
+        @Override public Solver<PackingSolution> seed(long randomSeed)    { seed = randomSeed;    return this; }
+        @Override public Solver<PackingSolution> verbose(boolean log)      { verbose = log;        return this; }
 
         @Override
         public PackingSolution solve() {
-            return new CpSatPackingSolver(containers, boxes, goal)
+            return new CpSatPackingSolver(containers, boxes, goal, requireSupport)
                     .timeLimit(timeLimit)
                     .workers(workers)
                     .seed(seed)

@@ -28,17 +28,21 @@ public record ContainerAssignment(
     /**
      * The placement of a single box within a container.
      *
-     * @param boxId   the box identifier
-     * @param x       the box origin X coordinate (>= 0)
-     * @param y       the box origin Y coordinate (>= 0)
-     * @param z       the box origin Z coordinate (>= 0)
-     * @param length  the box length (X extent)
-     * @param width   the box width (Y extent)
-     * @param height  the box height (Z extent)
+     * @param boxId       the box identifier
+     * @param x           the box origin X coordinate (>= 0)
+     * @param y           the box origin Y coordinate (>= 0)
+     * @param z           the box origin Z coordinate (>= 0)
+     * @param length      the oriented box length (X extent actually applied)
+     * @param width       the oriented box width (Y extent actually applied)
+     * @param height      the oriented box height (Z extent actually applied)
+     * @param orientation the orientation chosen by the solver ({@code null} when the box is
+     *                    not rotatable, in which case {@code length/width/height} equal the
+     *                    declared canonical dimensions)
      */
     public record BoxPlacement(
             String boxId,
             long x, long y, long z,
-            long length, long width, long height
+            long length, long width, long height,
+            Orientation orientation
     ) {}
 }

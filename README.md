@@ -251,9 +251,13 @@ PackingSolution sol = Optimize.packing()
         .container("40ft", c -> c.length(1200).width(235).height(269).maxWeight(28000))
         .container("20ft", c -> c.length(586).width(235).height(269).maxWeight(22000))
         .box("Pallet-A", b -> b.length(120).width(80).height(150).weight(800))
-        .box("Pallet-B", b -> b.length(120).width(80).height(150).weight(1200))
-        .box("Machine-X", b -> b.length(200).width(100).height(180).weight(4500))
-        .minimize(Goals.minimizeContainersUsed())
+        .box("Pallet-B", b -> b.length(120).width(80).height(150).weight(1200)
+                .rotatable(true)               // may be reoriented to any axis-permutation
+                .maxStackedWeight(900))        // caps total weight resting on this box
+        .box("Machine-X", b -> b.length(200).width(100).height(180).weight(4500)
+                .below("Pallet-B"))           // Pallet-B must sit directly on Machine-X
+        .requireSupport(true)                  // every resting box must be footprint-supported
+        .goal(Goals.minimizeContainersUsed())
         .solver()
         .timeLimit(Duration.ofSeconds(15))
         .workers(4)
@@ -265,10 +269,17 @@ for (ContainerAssignment a : sol.assignments()) {
             a.containerId(), a.boxes().size(),
             a.usedVolume(), a.length()*a.width()*a.height(),
             a.usedWeight(), a.maxWeight());
+    for (ContainerAssignment.BoxPlacement p : a.boxes()) {
+        System.out.printf("    %s at (%d,%d,%d) dim %dx%dx%d%s%n",
+                p.boxId(), p.x(), p.y(), p.z(), p.length(), p.width(), p.height(),
+                p.orientation() == null ? "" : " rotated " + p.orientation());
+    }
 }
 ```
 
-Boxes too large for any container appear in `sol.unassignedBoxes()`. Each `ContainerAssignment` carries per-box `BoxPlacement` records with origin coordinates (x, y, z) for 3D non-overlap verification.
+Boxes too large for any container appear in `sol.unassignedBoxes()`. Each `ContainerAssignment` carries per-box `BoxPlacement` records with origin coordinates (x, y, z) and the applied `Orientation` (null for non-rotatable boxes) for 3D non-overlap verification.
+
+Beyond the classical no-overlap + weight-limit model, boxes opt into stacking sub-features: `.rotatable(true)` lets the solver choose any distinct axis-permutation of the box dimensions; `.maxStackedWeight(w)` caps the total weight of boxes resting on a supporting box; `.above(id)` / `.below(id)` declare an explicit vertical order between two boxes; and `.requireSupport(true)` enforces that every box resting on another has its XY footprint contained within the supporter below. All default off, preserving the classical model.
 
 ### Resource booking (appointment scheduling)
 

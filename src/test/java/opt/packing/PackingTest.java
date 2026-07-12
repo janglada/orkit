@@ -411,4 +411,170 @@ class PackingTest {
         PackingSolution s2 = problem.solver().timeLimit(Duration.ofSeconds(5)).solve();
         assertThat(s1.objective()).isEqualTo(s2.objective());
     }
+
+    // ── T-Pk21: Rotation lets a box fit by turning 90° ────────────────────────
+    // Box (5,2,2) cannot fit a (3,6,6) container in its canonical orientation
+    // (length 5 > 3 on X), but rotating to (2,5,2) or (2,2,5) fits every axis.
+
+    @Test
+    void rotationLetsBoxFit() {
+        PackingSolution noRotate = new PackingBuilder()
+                .goal(Goals.maximizeVolumeUtilization())
+                .container("C", c -> c.length(3).width(6).height(6).maxWeight(100))
+                .box("B", b -> b.length(5).width(2).height(2).weight(1))   // not rotatable
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(noRotate.isFeasible()).isTrue();
+        assertThat(noRotate.containerOf("B")).isNull();   // cannot fit without rotation
+
+        PackingSolution withRotate = new PackingBuilder()
+                .goal(Goals.maximizeVolumeUtilization())
+                .container("C", c -> c.length(3).width(6).height(6).maxWeight(100))
+                .box("B", b -> b.length(5).width(2).height(2).weight(1).rotatable(true))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(withRotate.isFeasible()).isTrue();
+        assertThat(withRotate.containerOf("B")).isEqualTo("C");
+        ContainerAssignment.BoxPlacement p = placementOf(withRotate, "B");
+        assertThat(p).isNotNull();
+        assertThat(p.orientation()).as("rotatable box must report a chosen orientation").isNotNull();
+        // The oriented dimensions must fit the container on every axis.
+        assertThat(p.x() + p.length()).isLessThanOrEqualTo(3);
+        assertThat(p.y() + p.width()).isLessThanOrEqualTo(6);
+        assertThat(p.z() + p.height()).isLessThanOrEqualTo(6);
+        assertBoxesWithinBounds(withRotate.assignments());
+    }
+
+    // ── T-Pk22: Support footprint rejects a floating box ───────────────────────
+    // A=(4,2,2) fills the X axis, B=(2,4,2) fills the Y axis of a (4,4,4) container,
+    // so neither side-by-side nor footprint-containment is possible: they MUST stack
+    // yet neither footprint can hold the other. With requireSupport this is infeasible;
+    // without it the boxes may float and the stack is feasible.
+
+    @Test
+    void supportRejectsFloatingBox() {
+        PackingSolution floating = new PackingBuilder()
+                .goal(Goals.minimizeContainersUsed())
+                .container("C", c -> c.length(4).width(4).height(4).maxWeight(100))
+                .box("A", b -> b.length(4).width(2).height(2).weight(1))
+                .box("B", b -> b.length(2).width(4).height(2).weight(1))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(floating.isFeasible()).isTrue();
+        assertThat(floating.containersUsed()).isEqualTo(1);
+
+        PackingSolution supported = new PackingBuilder()
+                .requireSupport(true)
+                .goal(Goals.minimizeContainersUsed())
+                .container("C", c -> c.length(4).width(4).height(4).maxWeight(100))
+                .box("A", b -> b.length(4).width(2).height(2).weight(1))
+                .box("B", b -> b.length(2).width(4).height(2).weight(1))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(supported.isFeasible()).as("support footprint makes the floating stack impossible").isFalse();
+    }
+
+    // ── T-Pk23: Stacking precedence — above() forces vertical order ────────────
+
+    @Test
+    void precedenceAboveForcesOrder() {
+        PackingSolution sol = new PackingBuilder()
+                .goal(Goals.minimizeContainersUsed())
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .box("A", b -> b.length(2).width(2).height(2).weight(1).above("B"))
+                .box("B", b -> b.length(2).width(2).height(2).weight(1))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(sol.isFeasible()).isTrue();
+        ContainerAssignment.BoxPlacement a = placementOf(sol, "A");
+        ContainerAssignment.BoxPlacement b = placementOf(sol, "B");
+        assertThat(a).isNotNull();
+        assertThat(b).isNotNull();
+        // A is declared above B: A's bottom must sit at or above B's top.
+        assertThat(a.z())
+                .as("A (declared above B) must rest at or above B's top")
+                .isGreaterThanOrEqualTo(b.z() + b.height());
+        assertNoOverlap3D(sol.assignments());
+    }
+
+    // ── T-Pk24: Weight-bearing cap — overload is infeasible, within-cap feasible ─
+
+    @Test
+    void weightBearingCap() {
+        // Two 4x4-footprint boxes in a 4x4 container must stack. Precedence (A below B)
+        // forces B on top of A, so A bears B's weight.
+        PackingSolution feasible = new PackingBuilder()
+                .goal(Goals.minimizeContainersUsed())
+                .container("C", c -> c.length(4).width(4).height(4).maxWeight(100))
+                .box("A", b -> b.length(4).width(4).height(2).weight(1)
+                        .maxStackedWeight(10).below("B"))
+                .box("B", b -> b.length(4).width(4).height(2).weight(5))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(feasible.isFeasible()).as("load 5 <= cap 10 must be feasible").isTrue();
+
+        PackingSolution overloaded = new PackingBuilder()
+                .goal(Goals.minimizeContainersUsed())
+                .container("C", c -> c.length(4).width(4).height(4).maxWeight(100))
+                .box("A", b -> b.length(4).width(4).height(2).weight(1)
+                        .maxStackedWeight(3).below("B"))
+                .box("B", b -> b.length(4).width(4).height(2).weight(5))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(overloaded.isFeasible()).as("load 5 > cap 3 must be infeasible").isFalse();
+    }
+
+    // ── T-Pk25: Validation — bad maxStackedWeight / unknown / contradictory ────
+
+    @Test
+    void validationRejectsBadStackingConfig() {
+        // negative maxStackedWeight
+        assertThatThrownBy(() -> new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .box("A", b -> b.length(2).width(2).height(2).weight(1).maxStackedWeight(-1))
+                .solver().solve())
+                .isInstanceOf(ModelException.class).hasMessageContaining(">= 0");
+
+        // above() referencing an unknown box id
+        assertThatThrownBy(() -> new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .box("A", b -> b.length(2).width(2).height(2).weight(1).above("NOPE"))
+                .solver().solve())
+                .isInstanceOf(ModelException.class).hasMessageContaining("unknown box id");
+
+        // below() referencing an unknown box id
+        assertThatThrownBy(() -> new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .box("A", b -> b.length(2).width(2).height(2).weight(1).below("NOPE"))
+                .solver().solve())
+                .isInstanceOf(ModelException.class).hasMessageContaining("unknown box id");
+
+        // contradictory: A above B and A below B
+        assertThatThrownBy(() -> new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .box("A", b -> b.length(2).width(2).height(2).weight(1).above("B").below("B"))
+                .box("B", b -> b.length(2).width(2).height(2).weight(1))
+                .solver().solve())
+                .isInstanceOf(ModelException.class).hasMessageContaining("ontradict");
+
+        // contradictory: A above B and B above A
+        assertThatThrownBy(() -> new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .box("A", b -> b.length(2).width(2).height(2).weight(1).above("B"))
+                .box("B", b -> b.length(2).width(2).height(2).weight(1).above("A"))
+                .solver().solve())
+                .isInstanceOf(ModelException.class).hasMessageContaining("ontradict");
+
+        // self-reference
+        assertThatThrownBy(() -> new PackingBuilder()
+                .container("C", c -> c.length(10).width(10).height(10).maxWeight(100))
+                .box("A", b -> b.length(2).width(2).height(2).weight(1).above("A"))
+                .solver().solve())
+                .isInstanceOf(ModelException.class);
+    }
+
+    // ── Helpers for the stacking tests ─────────────────────────────────────────
+
+    /** Returns the placement of the given box id, or {@code null} if unassigned. */
+    private ContainerAssignment.BoxPlacement placementOf(PackingSolution sol, String boxId) {
+        for (ContainerAssignment a : sol.assignments()) {
+            for (ContainerAssignment.BoxPlacement p : a.boxes()) {
+                if (p.boxId().equals(boxId)) return p;
+            }
+        }
+        return null;
+    }
 }

@@ -1,6 +1,10 @@
 package opt.packing;
 
 import opt.ModelException;
+import opt.internal.Validate;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Fluent configurator for a single box.
@@ -13,6 +17,10 @@ public final class BoxConfig {
     long width;
     long height;
     long weight;
+    boolean rotatable = false;
+    long maxStackedWeight = Long.MAX_VALUE;
+    final List<String> aboveIds = new ArrayList<>();
+    final List<String> belowIds = new ArrayList<>();
 
     BoxConfig() {}
 
@@ -44,8 +52,56 @@ public final class BoxConfig {
         return this;
     }
 
-    long length()  { return length; }
-    long width()   { return width; }
-    long height()  { return height; }
-    long weight()  { return weight; }
+    /**
+     * Allows the solver to reorient this box, choosing any distinct axis-permutation of
+     * its {@code (length, width, height)} dimensions (up to six; a cube has one). Disabled
+     * by default, which keeps the canonical orientation fixed.
+     */
+    public BoxConfig rotatable(boolean rotatable) {
+        this.rotatable = rotatable;
+        return this;
+    }
+
+    /**
+     * Caps the total weight of boxes that rest directly on top of this one. The default
+     * {@code Long.MAX_VALUE} leaves the load unbounded; passing a finite value turns on
+     * the weight-bearing constraint for this box. Must be {@code >= 0}.
+     */
+    public BoxConfig maxStackedWeight(long maxStackedWeight) {
+        Validate.nonNegative(maxStackedWeight, "maxStackedWeight()");
+        this.maxStackedWeight = maxStackedWeight;
+        return this;
+    }
+
+    /**
+     * Declares that this box must sit directly above the box with the given id (this box
+     * rests on top of {@code otherId}). The referenced id must exist among the declared
+     * boxes. A pair declared in both directions (A above B and A below B) is a
+     * contradiction and is rejected at solve time.
+     */
+    public BoxConfig above(String otherId) {
+        Validate.nonBlank(otherId, "above() id");
+        this.aboveIds.add(otherId);
+        return this;
+    }
+
+    /**
+     * Declares that this box must sit directly below the box with the given id
+     * ({@code otherId} rests on top of this one). The referenced id must exist among the
+     * declared boxes. A pair declared in both directions is a contradiction.
+     */
+    public BoxConfig below(String otherId) {
+        Validate.nonBlank(otherId, "below() id");
+        this.belowIds.add(otherId);
+        return this;
+    }
+
+    long length()            { return length; }
+    long width()             { return width; }
+    long height()            { return height; }
+    long weight()            { return weight; }
+    boolean rotatable()      { return rotatable; }
+    long maxStackedWeight()  { return maxStackedWeight; }
+    List<String> aboveIds()  { return aboveIds; }
+    List<String> belowIds()  { return belowIds; }
 }
