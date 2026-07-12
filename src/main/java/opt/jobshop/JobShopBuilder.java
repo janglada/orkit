@@ -3,6 +3,7 @@ package opt.jobshop;
 import opt.ModelException;
 import opt.OptimizationProblem;
 import opt.Solver;
+import opt.internal.Validate;
 import opt.jobshop.internal.CpSatJobShopSolver;
 import opt.jobshop.internal.JobDef;
 import opt.jobshop.internal.SetupMatrix;
@@ -36,7 +37,7 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
     /** Registers one or more machines that operations can be scheduled on. */
     public JobShopBuilder machines(String... machineIds) {
         for (String m : machineIds) {
-            requireNonBlank(m, "machine id");
+            Validate.nonBlank(m, "machine id");
             machines.add(m);
         }
         return this;
@@ -47,7 +48,7 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
      * supplied lambda via {@link JobConfig}.
      */
     public JobShopBuilder job(String id, Consumer<JobConfig> config) {
-        requireNonBlank(id, "job id");
+        Validate.nonBlank(id, "job id");
         if (!jobIds.add(id)) {
             throw new ModelException("Duplicate job id: '" + id + "'.");
         }
@@ -67,9 +68,9 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
      * Asymmetric pairs must be declared separately.
      */
     public JobShopBuilder setupTime(String fromType, String toType, int units) {
-        requireNonBlank(fromType, "fromType");
-        requireNonBlank(toType, "toType");
-        requireNonNegative(units, "setup time");
+        Validate.nonBlank(fromType, "fromType");
+        Validate.nonBlank(toType, "toType");
+        Validate.nonNegative(units, "setup time");
         globalSetup.computeIfAbsent(fromType, k -> new LinkedHashMap<>()).put(toType, units);
         return this;
     }
@@ -79,10 +80,10 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
      * global matrix on that machine.
      */
     public JobShopBuilder setupTimeOn(String machine, String fromType, String toType, int units) {
-        requireNonBlank(machine, "machine");
-        requireNonBlank(fromType, "fromType");
-        requireNonBlank(toType, "toType");
-        requireNonNegative(units, "setup time");
+        Validate.nonBlank(machine, "machine");
+        Validate.nonBlank(fromType, "fromType");
+        Validate.nonBlank(toType, "toType");
+        Validate.nonNegative(units, "setup time");
         perMachineSetup
                 .computeIfAbsent(machine, k -> new LinkedHashMap<>())
                 .computeIfAbsent(fromType, k -> new LinkedHashMap<>())
@@ -95,7 +96,7 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
      * two different typed operations. Not applied to untyped or same-type ops.
      */
     public JobShopBuilder defaultSetupTime(int units) {
-        requireNonNegative(units, "default setup time");
+        Validate.nonNegative(units, "default setup time");
         this.defaultSetupTime = units;
         return this;
     }
@@ -105,8 +106,8 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
      * operation on that machine pays a setup if its type differs.
      */
     public JobShopBuilder initialTypeOn(String machine, String type) {
-        requireNonBlank(machine, "machine");
-        requireNonBlank(type, "type");
+        Validate.nonBlank(machine, "machine");
+        Validate.nonBlank(type, "type");
         initialTypes.put(machine, type);
         return this;
     }
@@ -188,18 +189,6 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
             out.put(e.getKey(), Map.copyOf(inner));
         }
         return Map.copyOf(out);
-    }
-
-    private static void requireNonBlank(String value, String name) {
-        if (value == null || value.isBlank()) {
-            throw new ModelException(name + " must be non-blank.");
-        }
-    }
-
-    private static void requireNonNegative(int value, String name) {
-        if (value < 0) {
-            throw new ModelException(name + " must be >= 0, got: " + value);
-        }
     }
 
     // ── Problem + Solver ────────────────────────────────────────────────────

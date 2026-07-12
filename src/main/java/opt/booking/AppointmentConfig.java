@@ -1,6 +1,7 @@
 package opt.booking;
 
 import opt.ModelException;
+import opt.internal.Validate;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -41,9 +42,7 @@ public final class AppointmentConfig {
             throw new ModelException("requiresAnyOf() requires at least one resource id.");
         }
         for (String id : ids) {
-            if (id == null || id.isBlank()) {
-                throw new ModelException("requiresAnyOf() resource id must be non-blank.");
-            }
+            Validate.nonBlank(id, "requiresAnyOf() resource id");
         }
         this.resourceIds = ids.clone();
         return this;

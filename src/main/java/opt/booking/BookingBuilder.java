@@ -6,6 +6,7 @@ import opt.Solver;
 import opt.booking.internal.AppointmentDef;
 import opt.booking.internal.CpSatBookingSolver;
 import opt.booking.internal.ResourceDef;
+import opt.internal.Validate;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -47,9 +48,7 @@ public final class BookingBuilder implements OptimizationProblem<BookingSolution
 
     /** Declares a bookable resource with the given unique id, configured via the {@link ResourceConfig} lambda. */
     public BookingBuilder resource(String id, Consumer<ResourceConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("resource id must be non-blank.");
-        }
+        Validate.nonBlank(id, "resource id");
         if (!resourceIds.add(id)) {
             throw new ModelException("Duplicate resource id: '" + id + "'.");
         }
@@ -65,9 +64,7 @@ public final class BookingBuilder implements OptimizationProblem<BookingSolution
 
     /** Declares an appointment with the given unique id, configured via the {@link AppointmentConfig} lambda. */
     public BookingBuilder appointment(String id, Consumer<AppointmentConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("appointment id must be non-blank.");
-        }
+        Validate.nonBlank(id, "appointment id");
         if (!appointmentIds.add(id)) {
             throw new ModelException("Duplicate appointment id: '" + id + "'.");
         }

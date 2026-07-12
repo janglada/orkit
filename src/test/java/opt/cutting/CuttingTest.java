@@ -13,6 +13,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 class CuttingTest {
 
@@ -338,5 +339,80 @@ class CuttingTest {
                 .filter(a -> !a.pieces().isEmpty()).findFirst().orElseThrow();
         assertThat(roll.stockId()).isEqualTo("100#1");
         assertThat(roll.pieces().get(0).pieceId()).isEqualTo("40#1");
+    }
+
+    // ── T-Ct18: MinimizeTotalCost prefers cheaper stock ────────────────────
+    // Two stock types of identical length but different cost. Both MinimizeWaste
+    // and MinimizeStockUsed are indifferent between them; MinimizeTotalCost
+    // must select the cheaper one.
+
+    @Test
+    void minimizeTotalCostPrefersCheaperStock() {
+        // Two 100mm stocks: cheap costs 1, expensive costs 100.
+        // One 50mm piece: fits on either roll.
+        CuttingSolution sol = new CuttingBuilder()
+                .stock("cheap", s -> s.length(100).cost(1))
+                .stock("expensive", s -> s.length(100).cost(100))
+                .required("P", p -> p.length(50))
+                .minimize(Goals.minimizeTotalCost())
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(sol.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(sol.totalStockUsed()).isEqualTo(1);
+        // The piece must be on the cheap roll (cost=1).
+        StockAssignment used = sol.assignments().stream()
+                .filter(a -> !a.pieces().isEmpty()).findFirst().orElseThrow();
+        assertThat(used.cost()).isEqualTo(1);
+        // Objective ≈ 1.0 (cost of cheap roll).
+        assertThat(sol.objective()).isPresent();
+        assertThat(sol.objective().getAsDouble()).isCloseTo(1.0, within(1e-9));
+    }
+
+    // ── T-Ct19: allowDroppingPieces makes oversized piece feasible ──────────
+
+    @Test
+    void allowDroppingPiecesMakesOversizedPieceFeasible() {
+        // Without dropping, a piece too long for any roll is INFEASIBLE.
+        CuttingSolution infeasible = new CuttingBuilder()
+                .stock("R", s -> s.length(50))
+                .required("big", p -> p.length(80))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(infeasible.status()).isEqualTo(SolveStatus.INFEASIBLE);
+
+        // With dropping enabled, the piece is dropped and the model is FEASIBLE.
+        CuttingSolution sol = new CuttingBuilder()
+                .stock("R", s -> s.length(50))
+                .required("big", p -> p.length(80))
+                .allowDroppingPieces(5)
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(sol.isFeasible()).isTrue();
+        assertThat(sol.unplacedPieces()).containsExactly("80#1");
+        assertThat(sol.totalStockUsed()).isZero();
+    }
+
+    // ── T-Ct20: allowDroppingPieces — oversized piece dropped, model feasible ─
+
+    @Test
+    void allowDroppingPiecesOversizedDroppedWithPenalty() {
+        // One 100mm roll, two pieces: one fits (50mm), one is too long (150mm).
+        // With dropping enabled, the oversized piece is dropped and the model
+        // stays feasible. The objective includes the penalty.
+        CuttingSolution sol = new CuttingBuilder()
+                .stock("R", s -> s.length(100))
+                .required("short", p -> p.length(50))
+                .required("long", p -> p.length(150))
+                .allowDroppingPieces(50)
+                .minimize(Goals.minimizeStockUsed())
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(sol.isFeasible()).isTrue();
+        // The oversized piece is impossible to place → dropped.
+        assertThat(sol.unplacedPieces()).contains("150#2");
+        // The short piece is placed.
+        assertThat(sol.totalStockUsed()).isEqualTo(1);
+        // Objective ≈ 1 stock + 50 penalty for the dropped piece.
+        assertThat(sol.objective()).isPresent();
+        assertThat(sol.objective().getAsDouble()).isCloseTo(51.0, within(1e-9));
     }
 }

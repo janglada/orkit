@@ -3,6 +3,7 @@ package opt.packing;
 import opt.ModelException;
 import opt.OptimizationProblem;
 import opt.Solver;
+import opt.internal.Validate;
 import opt.packing.internal.BoxDef;
 import opt.packing.internal.ContainerDef;
 import opt.packing.internal.CpSatPackingSolver;
@@ -25,9 +26,7 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
 
     /** Declares a container with the given unique id and configures it via the {@link ContainerConfig} lambda. */
     public PackingBuilder container(String id, Consumer<ContainerConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("container id must be non-blank.");
-        }
+        Validate.nonBlank(id, "container id");
         if (!containerIds.add(id)) {
             throw new ModelException("Duplicate container id: '" + id + "'.");
         }
@@ -51,9 +50,7 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
 
     /** Declares a box with the given unique id and configures it via the {@link BoxConfig} lambda. */
     public PackingBuilder box(String id, Consumer<BoxConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("box id must be non-blank.");
-        }
+        Validate.nonBlank(id, "box id");
         if (!boxIds.add(id)) {
             throw new ModelException("Duplicate box id: '" + id + "'.");
         }

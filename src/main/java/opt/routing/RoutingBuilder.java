@@ -3,6 +3,7 @@ package opt.routing;
 import opt.ModelException;
 import opt.OptimizationProblem;
 import opt.Solver;
+import opt.internal.Validate;
 import opt.routing.internal.StopDef;
 import opt.routing.internal.VehicleDef;
 
@@ -29,9 +30,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
     /** Sets the depot location that every vehicle departs from and returns to. */
     public RoutingBuilder depot(String id, double lat, double lon) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("depot id must be non-blank.");
-        }
+        Validate.nonBlank(id, "depot id");
         this.depotId  = id;
         this.depotLat = lat;
         this.depotLon = lon;
@@ -40,9 +39,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
     /** Adds a single vehicle configured by the lambda, which receives a fresh {@link VehicleConfig}. */
     public RoutingBuilder vehicle(String id, Consumer<VehicleConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("vehicle id must be non-blank.");
-        }
+        Validate.nonBlank(id, "vehicle id");
         if (!vehicleIds.add(id)) {
             throw new ModelException("Duplicate vehicle id: '" + id + "'.");
         }
@@ -63,9 +60,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
     /** Adds a stop (delivery/pickup node) configured by the lambda, which receives a fresh {@link StopConfig}. */
     public RoutingBuilder stop(String id, Consumer<StopConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("stop id must be non-blank.");
-        }
+        Validate.nonBlank(id, "stop id");
         if (!stopIds.add(id)) {
             throw new ModelException("Duplicate stop id: '" + id + "'.");
         }
@@ -112,9 +107,9 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     }
 
     /** Builds an immutable, reusable problem instance. */
-    public OptimizationProblem<RoutingPlan> build() {
+    public RoutingProblem build() {
         validate();
-        return new RoutingProblem(snapshot());
+        return new RoutingProblemImpl(snapshot());
     }
 
     /**
@@ -151,11 +146,11 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
             double travelSpeedKmh
     ) {}
 
-    private static final class RoutingProblem implements OptimizationProblem<RoutingPlan> {
+    private static final class RoutingProblemImpl implements RoutingProblem {
 
         private final Snap snap;
 
-        RoutingProblem(Snap snap) {
+        RoutingProblemImpl(Snap snap) {
             this.snap = snap;
         }
 

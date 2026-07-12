@@ -13,5 +13,10 @@ public final class Goals {
         return new CuttingGoal.MinimizeStockUsed();
     }
 
+    /** Returns the goal of minimizing the sum of {@link StockConfig#cost()} over all used rolls. */
+    public static CuttingGoal minimizeTotalCost() {
+        return new CuttingGoal.MinimizeTotalCost();
+    }
+
     private Goals() {}
 }

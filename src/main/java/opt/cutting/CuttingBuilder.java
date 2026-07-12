@@ -7,6 +7,7 @@ import opt.Solver;
 import opt.cutting.internal.CpSatCuttingSolver;
 import opt.cutting.internal.PieceDef;
 import opt.cutting.internal.StockDef;
+import opt.internal.Validate;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,12 +28,11 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
     private final Set<String> stockIds = new HashSet<>();
     private final Set<String> pieceIds = new HashSet<>();
     private CuttingGoal goal = Goals.minimizeWaste();
+    private long droppingPenalty = 0;
 
     /** Declares a stock roll type with the given unique id and configures it via the {@link StockConfig} lambda. */
     public CuttingBuilder stock(String id, Consumer<StockConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("stock id must be non-blank.");
-        }
+        Validate.nonBlank(id, "stock id");
         if (!stockIds.add(id)) {
             throw new ModelException("Duplicate stock id: '" + id + "'.");
         }
@@ -47,9 +47,7 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
 
     /** Declares a required piece type with the given unique id and configures it via the {@link PieceConfig} lambda. */
     public CuttingBuilder required(String id, Consumer<PieceConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("piece id must be non-blank.");
-        }
+        Validate.nonBlank(id, "piece id");
         if (!pieceIds.add(id)) {
             throw new ModelException("Duplicate piece id: '" + id + "'.");
         }
@@ -66,6 +64,17 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
     public CuttingBuilder minimize(CuttingGoal goal) {
         if (goal == null) throw new ModelException("Cutting goal must not be null.");
         this.goal = goal;
+        return this;
+    }
+
+    /**
+     * Allows pieces to be dropped (left uncut) from the solution. Each dropped piece
+     * adds {@code penalty} to the objective, so the solver only drops a piece when it
+     * is cheaper than placing it. A penalty of 0 or negative disables dropping
+     * (pieces are required, as before).
+     */
+    public CuttingBuilder allowDroppingPieces(long penalty) {
+        this.droppingPenalty = penalty;
         return this;
     }
 
@@ -96,7 +105,7 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
             }
         }
 
-        return new CuttingProblem(List.copyOf(stockDefs), List.copyOf(pieceDefs), goal);
+        return new CuttingProblem(List.copyOf(stockDefs), List.copyOf(pieceDefs), goal, droppingPenalty);
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
@@ -112,16 +121,18 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
         private final List<StockDef> stocks;
         private final List<PieceDef> pieces;
         private final CuttingGoal goal;
+        private final long droppingPenalty;
 
-        CuttingProblem(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal) {
+        CuttingProblem(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal, long droppingPenalty) {
             this.stocks = stocks;
             this.pieces = pieces;
             this.goal = goal;
+            this.droppingPenalty = droppingPenalty;
         }
 
         @Override
         public Solver<CuttingSolution> solver() {
-            return new CuttingSolver(stocks, pieces, goal);
+            return new CuttingSolver(stocks, pieces, goal, droppingPenalty);
         }
     }
 
@@ -130,15 +141,17 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
         private final List<StockDef> stocks;
         private final List<PieceDef> pieces;
         private final CuttingGoal goal;
+        private final long droppingPenalty;
         private Duration timeLimit = Duration.ofMinutes(1);
         private int workers = 1;
         private long seed = 0;
         private boolean verbose = false;
 
-        CuttingSolver(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal) {
+        CuttingSolver(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal, long droppingPenalty) {
             this.stocks = stocks;
             this.pieces = pieces;
             this.goal = goal;
+            this.droppingPenalty = droppingPenalty;
         }
 
         @Override public Solver<CuttingSolution> timeLimit(Duration limit) { timeLimit = limit; return this; }
@@ -148,7 +161,7 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
 
         @Override
         public CuttingSolution solve() {
-            return new CpSatCuttingSolver(stocks, pieces, goal)
+            return new CpSatCuttingSolver(stocks, pieces, goal, droppingPenalty)
                     .timeLimit(timeLimit)
                     .workers(workers)
                     .seed(seed)

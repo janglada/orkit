@@ -3,6 +3,7 @@ package opt.knapsack;
 import opt.ModelException;
 import opt.OptimizationProblem;
 import opt.Solver;
+import opt.internal.Validate;
 import opt.knapsack.internal.BinDef;
 import opt.knapsack.internal.CpSatMultipleKnapsackSolver;
 import opt.knapsack.internal.ItemDef;
@@ -24,9 +25,7 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
 
     /** Declares a knapsack (bin) with the given unique id and configures it via the {@link BinConfig} lambda. */
     public MultipleKnapsackBuilder bin(String id, Consumer<BinConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("bin id must be non-blank.");
-        }
+        Validate.nonBlank(id, "bin id");
         if (!binIds.add(id)) {
             throw new ModelException("Duplicate bin id: '" + id + "'.");
         }
@@ -41,9 +40,7 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
 
     /** Declares an item with the given unique id and configures it via the {@link ItemConfig} lambda. */
     public MultipleKnapsackBuilder item(String id, Consumer<ItemConfig> config) {
-        if (id == null || id.isBlank()) {
-            throw new ModelException("item id must be non-blank.");
-        }
+        Validate.nonBlank(id, "item id");
         if (!itemIds.add(id)) {
             throw new ModelException("Duplicate item id: '" + id + "'.");
         }

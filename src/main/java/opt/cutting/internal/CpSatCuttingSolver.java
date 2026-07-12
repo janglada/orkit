@@ -25,6 +25,7 @@ public final class CpSatCuttingSolver {
     private final List<StockDef> stocks;
     private final List<PieceDef> pieces;
     private final CuttingGoal goal;
+    private final long droppingPenalty;
 
     private double timeLimitSeconds = 60;
     private int workers = 1;
@@ -35,10 +36,11 @@ public final class CpSatCuttingSolver {
      * Creates a solver for the given expanded rolls, piece instances, and objective.
      * Internal; obtain instances via {@link opt.cutting.CuttingBuilder#solver()}.
      */
-    public CpSatCuttingSolver(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal) {
+    public CpSatCuttingSolver(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal, long droppingPenalty) {
         this.stocks = List.copyOf(stocks);
         this.pieces = List.copyOf(pieces);
         this.goal = goal;
+        this.droppingPenalty = droppingPenalty;
     }
 
     /** Sets the maximum wall-clock time the solver may run before giving up. */
@@ -94,11 +96,27 @@ public final class CpSatCuttingSolver {
             }
         }
 
-        // Each piece is REQUIRED: assigned to exactly one roll.
+        // Each piece is assigned to at most one roll.
+        // When dropping is enabled, pieces may be left unplaced (dropped[p] = 1).
+        BoolVar[] dropped = null;
+        if (droppingPenalty > 0) {
+            dropped = new BoolVar[P];
+        }
         for (int p = 0; p < P; p++) {
             BoolVar[] row = new BoolVar[R];
             System.arraycopy(x[p], 0, row, 0, R);
-            model.addEquality(buildWeightedSum(row, ones(R)), 1);
+            if (droppingPenalty > 0) {
+                dropped[p] = model.newBoolVar("dropped_" + pieces.get(p).id());
+                // sum(x[p][*]) + dropped[p] = 1  =>  dropped[p] = 1 iff piece is unplaced
+                BoolVar[] rowWithDrop = new BoolVar[R + 1];
+                System.arraycopy(x[p], 0, rowWithDrop, 0, R);
+                rowWithDrop[R] = dropped[p];
+                model.addEquality(buildWeightedSum(rowWithDrop, ones(R + 1)), 1);
+                // sum(x[p][*]) <= 1 as a safety net (the equality already implies it)
+                model.addLessOrEqual(buildWeightedSum(row, ones(R)), 1);
+            } else {
+                model.addEquality(buildWeightedSum(row, ones(R)), 1);
+            }
         }
 
         // used[r] = 1 iff roll r is consumed
@@ -135,7 +153,18 @@ public final class CpSatCuttingSolver {
                     obj.addTerm(used[r], 1);
                 }
             }
+            case CuttingGoal.MinimizeTotalCost minimizeTotalCost -> {
+                for (int r = 0; r < R; r++) {
+                    obj.addTerm(used[r], stocks.get(r).cost());
+                }
+            }
             case null, default -> throw new ModelException("Unsupported cutting goal: " + goal);
+        }
+        // When dropping is enabled, add a penalty for each dropped piece.
+        if (droppingPenalty > 0) {
+            for (int p = 0; p < P; p++) {
+                obj.addTerm(dropped[p], droppingPenalty);
+            }
         }
         model.minimize(obj);
 

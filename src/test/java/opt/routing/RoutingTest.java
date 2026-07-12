@@ -791,4 +791,32 @@ class RoutingTest {
         assertThat(plan.isFeasible()).isTrue();
         assertThat(plan.unassignedStops()).isEmpty();
     }
+
+    // ── T-R38: build().solver() returns RoutingSolver with firstSolution/improveWith ──
+
+    @Test
+    void buildReturnsRoutingProblemWithTypedSolver() {
+        // Verify that build() returns a RoutingProblem whose solver() is a
+        // RoutingSolver, so firstSolution and improveWith are available without
+        // a cast. This is the post-build path (the direct solver() path already works).
+        RoutingProblem problem = Optimize.vehicleRouting()
+                .depot("depot", 41.390, 2.160)
+                .vehicle("v1", v -> v.capacity(100))
+                .stop("A", s -> s.at(41.400, 2.165).demand(10))
+                .stop("B", s -> s.at(41.385, 2.155).demand(10))
+                .distances(DistanceSource.haversine())
+                .minimize(Goals.totalDistance())
+                .build();
+
+        // The key assertion: build() returns RoutingProblem, not just OptimizationProblem.
+        // If it compiles, the return type is correct.
+        RoutingPlan plan = problem.solver()
+                .timeLimit(Duration.ofSeconds(5))
+                .firstSolution(Strategy.PATH_CHEAPEST_ARC)
+                .improveWith(Metaheuristic.GUIDED_LOCAL_SEARCH)
+                .solve();
+
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.unassignedStops()).isEmpty();
+    }
 }
