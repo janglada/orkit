@@ -4,6 +4,7 @@ import opt.ModelException;
 import opt.OptimizationProblem;
 import opt.Solver;
 import opt.internal.Validate;
+import opt.routing.internal.DepotDef;
 import opt.routing.internal.StopDef;
 import opt.routing.internal.VehicleDef;
 
@@ -16,9 +17,8 @@ import java.util.function.Consumer;
 /** Fluent builder for vehicle routing problems. Entry point: {@code Optimize.vehicleRouting()}. */
 public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
-    private String depotId;
-    private double depotLat;
-    private double depotLon;
+    private final List<DepotDef> depots        = new ArrayList<>();
+    private final Set<String> depotIds        = new LinkedHashSet<>();
     private final List<VehicleDef> vehicles = new ArrayList<>();
     private final List<StopDef> stops       = new ArrayList<>();
     private final Set<String> vehicleIds    = new LinkedHashSet<>();
@@ -28,12 +28,22 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     private RoutingGoal goal                = new RoutingGoal.MinimizeTotalDistance();
     private double travelSpeedKmh           = 40.0;
 
-    /** Sets the depot location that every vehicle departs from and returns to. */
+    /**
+     * Registers a depot location that vehicles may depart from and return to.
+     *
+     * <p>This method is accumulative: each call adds another depot, in declaration order.
+     * The first registered depot is the default for vehicles that do not specify one
+     * via {@link VehicleConfig#startsAt(String)} / {@link VehicleConfig#endsAt(String)}.
+     * At least one depot is required.
+     *
+     * @throws opt.ModelException if {@code id} is blank or a depot with this id was already registered
+     */
     public RoutingBuilder depot(String id, double lat, double lon) {
         Validate.nonBlank(id, "depot id");
-        this.depotId  = id;
-        this.depotLat = lat;
-        this.depotLon = lon;
+        if (!depotIds.add(id)) {
+            throw new ModelException("Duplicate depot id: '" + id + "'.");
+        }
+        depots.add(new DepotDef(id, lat, lon));
         return this;
     }
 
@@ -46,7 +56,8 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         VehicleConfig cfg = new VehicleConfig();
         cfg.id = id;
         config.accept(cfg);
-        vehicles.add(new VehicleDef(id, cfg.capacity, cfg.maxDistanceMeters));
+        vehicles.add(new VehicleDef(id, cfg.capacity, cfg.maxDistanceMeters,
+                cfg.startDepotId, cfg.endDepotId));
         return this;
     }
 
@@ -120,7 +131,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     public RoutingSolver solver() {
         validate();
         Snap snap = snapshot();
-        return new RoutingSolver(snap.depotId(), snap.depotLat(), snap.depotLon(),
+        return new RoutingSolver(snap.depots(),
                 snap.vehicles(), snap.stops(), snap.distanceSource(),
                 snap.droppingPenalty(), snap.goal(), snap.travelSpeedKmh());
     }
@@ -128,19 +139,19 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     // ── Internals ────────────────────────────────────────────────────────────
 
     private void validate() {
-        if (depotId == null) throw new ModelException("depot(...) must be called.");
+        if (depots.isEmpty())  throw new ModelException("depot(...) must be called.");
         if (vehicles.isEmpty()) throw new ModelException("At least one vehicle is required.");
         if (stops.isEmpty())    throw new ModelException("At least one stop is required.");
     }
 
     private Snap snapshot() {
-        return new Snap(depotId, depotLat, depotLon,
+        return new Snap(List.copyOf(depots),
                 List.copyOf(vehicles), List.copyOf(stops),
                 distanceSource, droppingPenalty, goal, travelSpeedKmh);
     }
 
     private record Snap(
-            String depotId, double depotLat, double depotLon,
+            List<DepotDef> depots,
             List<VehicleDef> vehicles, List<StopDef> stops,
             DistanceSource distanceSource, long droppingPenalty, RoutingGoal goal,
             double travelSpeedKmh
@@ -156,7 +167,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
         @Override
         public RoutingSolver solver() {
-            return new RoutingSolver(snap.depotId(), snap.depotLat(), snap.depotLon(),
+            return new RoutingSolver(snap.depots(),
                     snap.vehicles(), snap.stops(), snap.distanceSource(),
                     snap.droppingPenalty(), snap.goal(), snap.travelSpeedKmh());
         }

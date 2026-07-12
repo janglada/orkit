@@ -819,4 +819,199 @@ class RoutingTest {
         assertThat(plan.isFeasible()).isTrue();
         assertThat(plan.unassignedStops()).isEmpty();
     }
+
+    // ── T-R39: Multiple depots partition stops by vehicle depot ──────────────
+
+    @Test
+    void multipleDepotsPartitionStopsByVehicleDepot() {
+        // Nodes: 0=d1, 1=d2, 2=A (near d1), 3=B (near d2). Cross arcs are huge.
+        long[][] matrix = {
+            {0,    9999, 100,  9999},   // d1 → d2/A/B
+            {9999, 0,    9999, 100 },   // d2 → d1/A/B
+            {100,  9999, 0,    9999},   // A  → d1/d2/B
+            {9999, 100,  9999, 0   }    // B  → d1/d2/A
+        };
+
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("d1", 0.0, 0.0)
+                .depot("d2", 0.0, 0.0)
+                .vehicle("v1", v -> v.capacity(100).startsAt("d1"))
+                .vehicle("v2", v -> v.capacity(100).startsAt("d2"))
+                .stop("A", s -> s.at(0.0, 0.0).demand(1))
+                .stop("B", s -> s.at(0.0, 0.0).demand(1))
+                .distances(DistanceSource.fromMatrix(matrix))
+                .minimize(Goals.totalDistance())
+                .solver()
+                .timeLimit(Duration.ofSeconds(5))
+                .firstSolution(Strategy.PATH_CHEAPEST_ARC)
+                .solve();
+
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.unassignedStops()).isEmpty();
+        assertThat(plan.routes()).hasSize(2);
+
+        Route r1 = plan.routes().stream().filter(r -> r.vehicle().equals("v1")).findFirst().orElseThrow();
+        Route r2 = plan.routes().stream().filter(r -> r.vehicle().equals("v2")).findFirst().orElseThrow();
+
+        // Each vehicle departs from its own assigned depot.
+        assertThat(r1.depotId()).isEqualTo("d1");
+        assertThat(r2.depotId()).isEqualTo("d2");
+
+        // Stops are partitioned: A served from d1, B served from d2.
+        assertThat(r1.stops()).containsExactly("A");
+        assertThat(r2.stops()).containsExactly("B");
+
+        // d1→A→d1 = 200; d2→B→d2 = 200; total 400.
+        assertThat(plan.objective()).hasValue(400.0);
+    }
+
+    // ── T-R40: A vehicle may start and end at different depots ───────────────
+
+    @Test
+    void vehicleStartsAndEndsAtDifferentDepots() {
+        // Nodes: 0=d1, 1=d2, 2=A (equidistant from both depots).
+        long[][] matrix = {
+            {0,    9999, 100},
+            {9999, 0,    100},
+            {100,  100,  0  }
+        };
+
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("d1", 0.0, 0.0)
+                .depot("d2", 0.0, 0.0)
+                .vehicle("v1", v -> v.capacity(100).startsAt("d1").endsAt("d2"))
+                .stop("A", s -> s.at(0.0, 0.0).demand(1))
+                .distances(DistanceSource.fromMatrix(matrix))
+                .minimize(Goals.totalDistance())
+                .solver()
+                .timeLimit(Duration.ofSeconds(5))
+                .firstSolution(Strategy.PATH_CHEAPEST_ARC)
+                .solve();
+
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.routes()).hasSize(1);
+
+        // depotId() reports the start depot.
+        Route r = plan.routes().get(0);
+        assertThat(r.depotId()).isEqualTo("d1");
+        assertThat(r.stops()).containsExactly("A");
+        // d1→A→d2 = 100 + 100 = 200.
+        assertThat(plan.objective()).hasValue(200.0);
+    }
+
+    // ── T-R41: Unknown depot id on a vehicle is rejected ─────────────────────
+
+    @Test
+    void unknownDepotIdOnVehicleThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.vehicleRouting()
+                        .depot("d1", 0.1, 0.1)
+                        .depot("d2", 0.2, 0.2)
+                        .vehicle("v1", v -> v.capacity(10).startsAt("nope"))
+                        .stop("A", s -> s.at(0.15, 0.15).demand(1))
+                        .distances(DistanceSource.haversine())
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class).hasMessageContaining("unknown depot id");
+    }
+
+    // ── T-R42: Duplicate depot id is rejected ───────────────────────────────
+
+    @Test
+    void duplicateDepotIdThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.vehicleRouting()
+                        .depot("d1", 0.1, 0.1)
+                        .depot("d1", 0.2, 0.2)
+                        .vehicle("v1", v -> v.capacity(10))
+                        .stop("A", s -> s.at(0.15, 0.15).demand(1))
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class).hasMessageContaining("Duplicate depot id");
+    }
+
+    // ── T-R43: A vehicle with no startsAt uses the default (first) depot ─────
+
+    @Test
+    void vehicleWithoutStartsAtUsesDefaultDepot() {
+        // Nodes: 0=d1 (default), 1=d2, 2=A. A is cheaper from d1.
+        long[][] matrix = {
+            {0,   50,  100},
+            {50,  0,   200},
+            {100, 200, 0  }
+        };
+
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("d1", 0.0, 0.0)
+                .depot("d2", 0.0, 0.0)
+                .vehicle("v1", v -> v.capacity(100))   // no startsAt → default depot d1
+                .stop("A", s -> s.at(0.0, 0.0).demand(1))
+                .distances(DistanceSource.fromMatrix(matrix))
+                .minimize(Goals.totalDistance())
+                .solver()
+                .timeLimit(Duration.ofSeconds(5))
+                .firstSolution(Strategy.PATH_CHEAPEST_ARC)
+                .solve();
+
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.routes()).hasSize(1);
+        assertThat(plan.routes().get(0).depotId()).isEqualTo("d1");
+        assertThat(plan.routes().get(0).stops()).containsExactly("A");
+    }
+
+    // ── T-R44: Wrong-sized precomputed matrix under multi-depot ──────────────
+
+    @Test
+    void wrongSizedMatrixUnderMultiDepotThrowsModelException() {
+        // 2 depots + 2 stops = 4 nodes, but matrix is 3×3.
+        long[][] tooSmall = {
+            {0,   100, 200},
+            {100, 0,   150},
+            {200, 150, 0  }
+        };
+
+        assertThatThrownBy(() ->
+                Optimize.vehicleRouting()
+                        .depot("d1", 0.0, 0.0)
+                        .depot("d2", 0.0, 0.0)
+                        .vehicle("v1", v -> v.capacity(100))
+                        .stop("A", s -> s.at(0.0, 0.0).demand(1))
+                        .stop("B", s -> s.at(0.0, 0.0).demand(1))
+                        .distances(DistanceSource.fromMatrix(tooSmall))
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class).hasMessageContaining("4×4");
+    }
+
+    // ── T-R45: Single-depot builder still surfaces depotId on routes ─────────
+
+    @Test
+    void singleDepotSurfacesDepotIdOnRoutes() {
+        long[][] matrix = {
+            {0,   100},
+            {100, 0  }
+        };
+
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("only", 0.0, 0.0)
+                .vehicle("v1", v -> v.capacity(100))
+                .stop("S", s -> s.at(0.0, 0.0).demand(1))
+                .distances(DistanceSource.fromMatrix(matrix))
+                .minimize(Goals.totalDistance())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.routes()).hasSize(1);
+        assertThat(plan.routes().get(0).depotId()).isEqualTo("only");
+    }
+
+    // ── T-R46: startsAt with a blank id is rejected ──────────────────────────
+
+    @Test
+    void blankStartsAtDepotIdThrowsModelException() {
+        assertThatThrownBy(() ->
+                Optimize.vehicleRouting()
+                        .depot("d1", 0.1, 0.1)
+                        .vehicle("v1", v -> v.capacity(10).startsAt("  "))
+                        .stop("A", s -> s.at(0.15, 0.15).demand(1))
+                        .solver().solve()
+        ).isInstanceOf(ModelException.class).hasMessageContaining("non-blank");
+    }
 }

@@ -8,7 +8,6 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,11 +15,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Database-driven last-mile delivery example for the vehicle routing solver.
  *
- * <p>Loads a realistic parcel-courier schema from {@code db/routing.sql} (one depot,
- * a heterogeneous fleet of 4 vans, and 16 customer stops across Barcelona with
- * demands, service times, and morning / midday / flexible time-window cohorts),
- * builds the routing model via the fluent DSL, solves it, and asserts the
- * structural invariants a dispatcher would rely on.
+ * <p>Loads a realistic parcel-courier schema from {@code db/routing.sql} (two depots
+ * — Mercabarna (west) and Poblenou (east) — a heterogeneous fleet of 4 vans assigned
+ * to depots, and 16 customer stops across Barcelona with demands, service times, and
+ * morning / midday / flexible time-window cohorts), builds the routing model via the
+ * fluent DSL, solves it, and asserts the structural invariants a dispatcher would
+ * rely on — including that each vehicle's route departs from its assigned depot.
  *
  * <p>Uses {@link Strategy#PATH_CHEAPEST_ARC} as the first-solution strategy: it is
  * the most reliable packer for tight, time-windowed VRPs (the SAVINGS heuristic can
@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * routing solver then misreports as infeasible).
  *
  * <p>The test also prints the solved routes (status, objective, per-vehicle tour,
- * load, distance) so it doubles as a runnable example.
+ * depot, load, distance) so it doubles as a runnable example.
  *
  * <p>Run: {@code mvn test -Dtest=RoutingDbExampleTest}
  */
@@ -38,23 +38,39 @@ class RoutingDbExampleTest {
     void solveLastMileDeliveryFromDatabase() throws SQLException {
         try (TestDatabase db = TestDatabase.load("db/routing.sql")) {
 
-            // ── Load depot ───────────────────────────────────────────────────
-            Map<String, Object> depot = db.select("SELECT * FROM depot").get(0);
-            String depotId = TestDatabase.asString(depot, "id");
-            double depotLat = ((Number) depot.get("lat")).doubleValue();
-            double depotLon = ((Number) depot.get("lon")).doubleValue();
+            // ── Load depots (multiple; first is the default) ─────────────────
+            Map<String, double[]> depotCoords = new HashMap<>();
+            RoutingBuilder builder = Optimize.vehicleRouting();
+            for (Map<String, Object> d : db.select("SELECT * FROM depot ORDER BY id")) {
+                String did = TestDatabase.asString(d, "id");
+                double lat = ((Number) d.get("lat")).doubleValue();
+                double lon = ((Number) d.get("lon")).doubleValue();
+                depotCoords.put(did, new double[]{lat, lon});
+                builder = builder.depot(did, lat, lon);
+            }
 
-            // ── Load fleet, keyed by id → capacity (for later assertions) ────
+            // ── Load fleet, keyed by id → capacity / assigned depot ───────────
             Map<String, Integer> capacityOf = new HashMap<>();
-            RoutingBuilder builder = Optimize.vehicleRouting()
-                    .depot(depotId, depotLat, depotLon);
-
+            Map<String, String> vehicleDepot = new HashMap<>();
             for (Map<String, Object> v : db.select("SELECT * FROM vehicle ORDER BY id")) {
                 String vid = TestDatabase.asString(v, "id");
                 int capacity = TestDatabase.asInt(v, "capacity");
                 long maxDistance = TestDatabase.asLong(v, "max_distance_m");
                 capacityOf.put(vid, capacity);
-                builder = builder.vehicle(vid, vc -> vc.capacity(capacity).maxDistanceMeters(maxDistance));
+
+                // depot_id is nullable; a null falls back to the default (first) depot.
+                Object depotIdVal = v.get("depot_id");
+                final String depotId = depotIdVal == null ? null : depotIdVal.toString();
+                if (depotId != null) {
+                    vehicleDepot.put(vid, depotId);
+                }
+
+                builder = builder.vehicle(vid, vc -> {
+                    vc.capacity(capacity).maxDistanceMeters(maxDistance);
+                    if (depotId != null) {
+                        vc.startsAt(depotId);
+                    }
+                });
             }
 
             // ── Load stops, building demand totals and time windows ──────────
@@ -113,6 +129,17 @@ class RoutingDbExampleTest {
                         .isLessThanOrEqualTo(cap);
             }
 
+            // Each vehicle's route departs from its assigned depot.
+            for (Route r : plan.routes()) {
+                String expectedDepot = vehicleDepot.get(r.vehicle());
+                if (expectedDepot != null) {
+                    assertThat(r.depotId())
+                            .as("vehicle %s should depart from depot %s", r.vehicle(), expectedDepot)
+                            .isEqualTo(expectedDepot);
+                }
+                assertThat(depotCoords).containsKey(r.depotId());
+            }
+
             // Total served demand equals sum of all stop demands
             int servedDemand = plan.routes().stream().mapToInt(Route::load).sum();
             assertThat(servedDemand)
@@ -121,7 +148,7 @@ class RoutingDbExampleTest {
 
             // ── Print routes (doubles as a runnable example) ─────────────────
             System.out.println("╔═══════════════════════════════════════════════════╗");
-            System.out.println("║   Barcelona Last-Mile Delivery (DB-driven VRP)   ║");
+            System.out.println("║  Barcelona Last-Mile Delivery (multi-depot VRP) ║");
             System.out.println("╚═══════════════════════════════════════════════════╝");
             System.out.printf("%nStatus : %s%n", plan.status());
             plan.objective().ifPresent(d ->
@@ -132,16 +159,16 @@ class RoutingDbExampleTest {
                 if (r.stops().isEmpty()) continue;
                 System.out.printf("%-12s (load %2d/%-2d): %s → %s → %s  [%.1f km]%n",
                         r.vehicle(), r.load(), capacityOf.get(r.vehicle()),
-                        depotId, String.join(" → ", r.stops()), depotId,
+                        r.depotId(), String.join(" → ", r.stops()), r.depotId(),
                         r.distanceMeters() / 1000.0);
             }
 
             System.out.println("\n── Vehicle utilization ──────────────────────────────────────────────");
-            System.out.printf("%-12s  %-6s  %-8s  %-6s%n", "Vehicle", "Stops", "Distance", "Load");
-            System.out.println("-".repeat(42));
+            System.out.printf("%-12s  %-10s  %-6s  %-8s  %-6s%n", "Vehicle", "Depot", "Stops", "Distance", "Load");
+            System.out.println("-".repeat(52));
             for (Route r : plan.routes()) {
-                System.out.printf("%-12s  %-6d  %-8.1f  %-6d%n",
-                        r.vehicle(), r.stops().size(), r.distanceMeters() / 1000.0, r.load());
+                System.out.printf("%-12s  %-10s  %-6d  %-8.1f  %-6d%n",
+                        r.vehicle(), r.depotId(), r.stops().size(), r.distanceMeters() / 1000.0, r.load());
             }
             System.out.printf("%nAll %d stops successfully assigned (total demand %d).%n",
                     stopCount, totalDemand);

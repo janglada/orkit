@@ -1,19 +1,25 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Last-mile parcel delivery — regional courier depot (Barcelona)
+-- Last-mile parcel delivery — regional courier depots (Barcelona)
 -- ─────────────────────────────────────────────────────────────────────────────
--- One depot (Mercabarna logistics hub, Zona Franca), a small heterogeneous fleet,
--- and 16 customer stops with demands, service times, and time windows.
+-- Two depots: Mercabarna logistics hub (Zona Franca, west) and a Poblenou
+-- distribution center (east). A small heterogeneous fleet of 4 vans is split
+-- across the two depots, and 16 customer stops span Barcelona with demands,
+-- service times, and time windows.
 --
 -- open_min / close_min are minutes-from-midnight.
 --   0 / 1440  means "no window" (flexible delivery any time of day).
 --   Two cohorts are seeded: a morning wave (480–660 = 08:00–11:00) and a
 --   midday wave (660–840 = 11:00–14:00); the rest are flexible.
 --
+-- Each vehicle is assigned to a depot via the (nullable) depot_id column.
+-- Vehicles with a depot_id depart from and return to that depot; a NULL
+-- depot_id falls back to the first registered depot (Mercabarna).
+--
 -- Total demand (60) fits comfortably within total fleet capacity (90) so the
 -- routing model is feasible with slack for the time-windowed cohorts.
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- ── Depot (single row) ────────────────────────────────────────────────────────
+-- ── Depots (multiple rows; first row is the default depot) ────────────────────
 CREATE TABLE depot (
     id   TEXT PRIMARY KEY,
     name TEXT,
@@ -25,7 +31,8 @@ CREATE TABLE depot (
 CREATE TABLE vehicle (
     id             TEXT PRIMARY KEY,
     capacity       INTEGER NOT NULL,
-    max_distance_m INTEGER NOT NULL
+    max_distance_m INTEGER NOT NULL,
+    depot_id       TEXT     -- nullable; the depot this vehicle departs/returns to
 );
 
 -- ── Customer stops ────────────────────────────────────────────────────────────
@@ -40,16 +47,18 @@ CREATE TABLE stop (
     close_min   INTEGER NOT NULL
 );
 
--- ── Seed: depot ───────────────────────────────────────────────────────────────
+-- ── Seed: depots ───────────────────────────────────────────────────────────────
+-- Mercabarna (west, Zona Franca) is the default/first depot; Poblenou (east).
 INSERT INTO depot (id, name, lat, lon) VALUES
-    ('Mercabarna', 'Mercabarna Logistics Hub', 41.3473, 2.1260);
+    ('Mercabarna', 'Mercabarna Logistics Hub', 41.3473, 2.1260),
+    ('Poblenou',   'Poblenou Distribution Center', 41.4037, 2.2000);
 
--- ── Seed: fleet — 2 large vans + 2 small vans (total capacity 90) ────────────
-INSERT INTO vehicle (id, capacity, max_distance_m) VALUES
-    ('LargeVan-1', 30, 60000),
-    ('LargeVan-2', 30, 60000),
-    ('SmallVan-1', 15, 50000),
-    ('SmallVan-2', 15, 45000);
+-- ── Seed: fleet — 2 large vans + 2 small vans split across the two depots ────
+INSERT INTO vehicle (id, capacity, max_distance_m, depot_id) VALUES
+    ('LargeVan-1', 30, 60000, 'Mercabarna'),
+    ('LargeVan-2', 30, 60000, 'Poblenou'),
+    ('SmallVan-1', 15, 50000, 'Mercabarna'),
+    ('SmallVan-2', 15, 45000, 'Poblenou');
 
 -- ── Seed: morning wave (08:00–11:00) — hotels and high-end drops ─────────────
 INSERT INTO stop (id, name, lat, lon, demand, service_min, open_min, close_min) VALUES

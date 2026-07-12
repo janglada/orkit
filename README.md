@@ -188,6 +188,29 @@ RoutingPlan plan = Optimize.vehicleRouting()
 System.out.println(plan.status() + " distance=" + plan.objective());
 ```
 
+**Multiple depots.** `depot(...)` is accumulative: call it once per depot (the
+first registered depot is the default). Assign vehicles to depots with
+`VehicleConfig.startsAt(depotId)` / `endsAt(depotId)` — a vehicle may start and
+end at different depots. If neither is set the vehicle uses the default depot
+for both ends; depot ids are resolved (and unknown ids rejected) at solve time.
+
+```java
+RoutingPlan plan = Optimize.vehicleRouting()
+        .depot("West", 41.347, 2.126)          // default depot
+        .depot("East", 41.404, 2.200)
+        .vehicle("Van-1", v -> v.capacity(20).startsAt("West"))
+        .vehicle("Van-2", v -> v.capacity(20).startsAt("East"))
+        .stop("Cust-A", s -> s.at(41.39, 2.16).demand(4))
+        .stop("Cust-B", s -> s.at(41.40, 2.19).demand(3))
+        .distances(DistanceSource.haversine())
+        .minimize(Goals.totalDistance())
+        .solver().timeLimit(Duration.ofSeconds(15)).solve();
+
+for (Route r : plan.routes()) {
+    System.out.printf("%s from %s: %s%n", r.vehicle(), r.depotId(), r.stops());
+}
+```
+
 ### Multiple knapsack
 
 ```java

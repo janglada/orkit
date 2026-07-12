@@ -1,6 +1,7 @@
 package opt.routing;
 
 import opt.Solver;
+import opt.routing.internal.DepotDef;
 import opt.routing.internal.RoutingCompiler;
 import opt.routing.internal.StopDef;
 import opt.routing.internal.VehicleDef;
@@ -14,9 +15,7 @@ import java.util.List;
  */
 public final class RoutingSolver implements Solver<RoutingPlan> {
 
-    private final String depotId;
-    private final double depotLat;
-    private final double depotLon;
+    private final List<DepotDef> depots;
     private final List<VehicleDef> vehicles;
     private final List<StopDef> stops;
     private final DistanceSource distanceSource;
@@ -31,13 +30,11 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
     private Strategy firstSolutionStrategy = Strategy.AUTOMATIC;
     private Metaheuristic metaheuristic = Metaheuristic.AUTOMATIC;
 
-    RoutingSolver(String depotId, double depotLat, double depotLon,
+    RoutingSolver(List<DepotDef> depots,
                   List<VehicleDef> vehicles, List<StopDef> stops,
                   DistanceSource distanceSource, long droppingPenalty,
                   RoutingGoal goal, double travelSpeedKmh) {
-        this.depotId = depotId;
-        this.depotLat = depotLat;
-        this.depotLon = depotLon;
+        this.depots = depots;
         this.vehicles = vehicles;
         this.stops = stops;
         this.distanceSource = distanceSource;
@@ -77,8 +74,7 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
     @Override
     public RoutingPlan solve() {
         return new RoutingCompiler(
-                depotId, depotLat, depotLon,
-                vehicles, stops, distanceSource, droppingPenalty,
+                depots, vehicles, stops, distanceSource, droppingPenalty,
                 firstSolutionStrategy, metaheuristic, goal, travelSpeedKmh)
                 .timeLimit(timeLimit)
                 .workers(workers)

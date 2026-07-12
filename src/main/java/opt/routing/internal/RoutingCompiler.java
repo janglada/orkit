@@ -12,10 +12,8 @@ import java.util.stream.Collectors;
 /** Compiles a routing model description into the OR-Tools Routing library and solves it. */
 public final class RoutingCompiler {
 
-    // Depot lat/lon
-    private final String depotId;
-    private final double depotLat;
-    private final double depotLon;
+    // Depots, in declaration order. Node indices 0..depots.size()-1 are depots.
+    private final List<DepotDef> depots;
 
     private final List<VehicleDef> vehicles;
     private final List<StopDef> stops;
@@ -34,27 +32,24 @@ public final class RoutingCompiler {
     /**
      * Creates a compiler for the given routing model description.
      *
-     * @param depotId          id of the depot node (node 0)
-     * @param depotLat         depot latitude, used for haversine distances
-     * @param depotLon         depot longitude, used for haversine distances
-     * @param vehicles         vehicle descriptions, one per vehicle
-     * @param stops            stop descriptions, indexed 1..N after the depot
-     * @param distanceSource   how inter-node distances are sourced
+     * @param depots          depot descriptions; node indices {@code 0..depots.size()-1} are depots
+     *                        in declaration order. The first depot is the default for vehicles
+     *                        that do not specify one.
+     * @param vehicles        vehicle descriptions, one per vehicle
+     * @param stops           stop descriptions, indexed {@code depots.size()..} after the depots
+     * @param distanceSource  how inter-node distances are sourced
      * @param droppingPenalty  per-stop penalty added when a stop is dropped; {@code <= 0} disables dropping
-     * @param firstSolution    first-solution strategy
-     * @param metaheuristic    local-search metaheuristic
-     * @param goal             minimization objective
-     * @param travelSpeedKmh   average speed used to convert distances to travel times
+     * @param firstSolution   first-solution strategy
+     * @param metaheuristic   local-search metaheuristic
+     * @param goal            minimization objective
+     * @param travelSpeedKmh  average speed used to convert distances to travel times
      */
-    public RoutingCompiler(String depotId, double depotLat, double depotLon,
+    public RoutingCompiler(List<DepotDef> depots,
                            List<VehicleDef> vehicles, List<StopDef> stops,
                            DistanceSource distanceSource, long droppingPenalty,
                            Strategy firstSolution, Metaheuristic metaheuristic,
                            RoutingGoal goal, double travelSpeedKmh) {
-        this.depotId = depotId;
-        this.depotLat = depotLat;
-        this.travelSpeedKmh = travelSpeedKmh > 0 ? travelSpeedKmh : 40.0;
-        this.depotLon = depotLon;
+        this.depots = List.copyOf(depots);
         this.vehicles = List.copyOf(vehicles);
         this.stops = List.copyOf(stops);
         this.distanceSource = distanceSource;
@@ -62,6 +57,7 @@ public final class RoutingCompiler {
         this.firstSolution = firstSolution;
         this.metaheuristic = metaheuristic;
         this.goal = goal;
+        this.travelSpeedKmh = travelSpeedKmh > 0 ? travelSpeedKmh : 40.0;
     }
 
     /** Sets the wall-clock time budget for the search; default 30 seconds. */
@@ -84,13 +80,33 @@ public final class RoutingCompiler {
     public RoutingPlan solve() {
         validate();
 
-        // node 0 = depot, nodes 1..N = stops
-        int numNodes    = 1 + stops.size();
+        // nodes 0..numDepots-1 = depots (declaration order); numDepots..numDepots+stops-1 = stops
+        int numDepots  = depots.size();
+        int numNodes   = numDepots + stops.size();
         int numVehicles = vehicles.size();
 
-        long[][] distMatrix = buildDistanceMatrix(numNodes);
+        long[][] distMatrix = buildDistanceMatrix(numNodes, numDepots);
 
-        RoutingIndexManager manager = new RoutingIndexManager(numNodes, numVehicles, 0);
+        // Resolve each vehicle's start/end depot to a node index.
+        Map<String, Integer> depotIndexOf = new HashMap<>();
+        for (int i = 0; i < numDepots; i++) {
+            depotIndexOf.put(depots.get(i).id(), i);
+        }
+        int[] starts = new int[numVehicles];
+        int[] ends = new int[numVehicles];
+        String[] startDepotIdOf = new String[numVehicles];
+        for (int v = 0; v < numVehicles; v++) {
+            VehicleDef vd = vehicles.get(v);
+            String startId = vd.startDepotId() != null ? vd.startDepotId()
+                    : (vd.endDepotId() != null ? vd.endDepotId() : depots.get(0).id());
+            String endId = vd.endDepotId() != null ? vd.endDepotId()
+                    : (vd.startDepotId() != null ? vd.startDepotId() : depots.get(0).id());
+            starts[v] = resolveDepotIndex(startId, depotIndexOf, vd.id());
+            ends[v] = resolveDepotIndex(endId, depotIndexOf, vd.id());
+            startDepotIdOf[v] = startId;
+        }
+
+        RoutingIndexManager manager = new RoutingIndexManager(numNodes, numVehicles, starts, ends);
         RoutingModel routing        = new RoutingModel(manager);
 
         // Arc cost evaluator
@@ -104,9 +120,9 @@ public final class RoutingCompiler {
         // Capacity dimension (only if at least one vehicle has a finite capacity)
         boolean useCapacity = vehicles.stream().anyMatch(v -> v.capacity() < Integer.MAX_VALUE);
         if (useCapacity) {
-            long[] demands = new long[numNodes]; // depot demand = 0
+            long[] demands = new long[numNodes]; // depot demands = 0
             for (int i = 0; i < stops.size(); i++) {
-                demands[i + 1] = stops.get(i).demand();
+                demands[numDepots + i] = stops.get(i).demand();
             }
             int demandCb = routing.registerUnaryTransitCallback(idx -> demands[(int) manager.indexToNode(idx)]);
             long[] capacities = vehicles.stream().mapToLong(v -> v.capacity() == Integer.MAX_VALUE ? Long.MAX_VALUE / 2 : v.capacity()).toArray();
@@ -121,7 +137,7 @@ public final class RoutingCompiler {
             int timeCb = routing.registerTransitCallback((fromIdx, toIdx) -> {
                 int from = (int) manager.indexToNode(fromIdx);
                 int to   = (int) manager.indexToNode(toIdx);
-                long service = (from > 0) ? stops.get(from - 1).serviceTimeMin() : 0;
+                long service = (from >= numDepots) ? stops.get(from - numDepots).serviceTimeMin() : 0;
                 return timeMatrix[from][to] + service;
             });
             int maxTime = 24 * 60; // 1440 minutes in a day
@@ -131,7 +147,7 @@ public final class RoutingCompiler {
             for (int i = 0; i < stops.size(); i++) {
                 StopDef stop = stops.get(i);
                 if (stop.hasTimeWindow()) {
-                    long nodeIdx = manager.nodeToIndex(i + 1);
+                    long nodeIdx = manager.nodeToIndex(numDepots + i);
                     timeDim.cumulVar(nodeIdx).setRange(stop.openMin(), stop.closeMin());
                 }
             }
@@ -152,7 +168,7 @@ public final class RoutingCompiler {
         // Optional stops (disjunctions with dropping penalty)
         if (droppingPenalty > 0) {
             for (int i = 0; i < stops.size(); i++) {
-                routing.addDisjunction(new long[]{manager.nodeToIndex(i + 1)}, droppingPenalty);
+                routing.addDisjunction(new long[]{manager.nodeToIndex(numDepots + i)}, droppingPenalty);
             }
         }
 
@@ -185,8 +201,8 @@ public final class RoutingCompiler {
                 long next = solution.value(routing.nextVar(index));
                 routeDistance += routing.getArcCostForVehicle(index, next, (long) v);
                 index = next;
-                if (node > 0) {
-                    StopDef stop = stops.get(node - 1);
+                if (node >= numDepots) {
+                    StopDef stop = stops.get(node - numDepots);
                     routeStops.add(stop.id());
                     routeLoad += stop.demand();
                     visitedStops.add(stop.id());
@@ -194,7 +210,8 @@ public final class RoutingCompiler {
             }
             totalDistance += routeDistance;
             if (!routeStops.isEmpty()) {
-                routes.add(new Route(vehicles.get(v).id(), routeStops, routeDistance, routeLoad));
+                routes.add(new Route(vehicles.get(v).id(), startDepotIdOf[v],
+                        routeStops, routeDistance, routeLoad));
             }
         }
 
@@ -220,24 +237,27 @@ public final class RoutingCompiler {
 
     // ── Distance matrix ─────────────────────────────────────────────────────
 
-    private long[][] buildDistanceMatrix(int numNodes) {
+    private long[][] buildDistanceMatrix(int numNodes, int numDepots) {
         if (distanceSource instanceof DistanceSource.PrecomputedMatrix m) {
             long[][] mat = m.meters();
             if (mat.length != numNodes || Arrays.stream(mat).anyMatch(r -> r.length != numNodes)) {
                 throw new ModelException(
                         "Distance matrix must be " + numNodes + "×" + numNodes
-                        + " (1 depot + " + stops.size() + " stops)");
+                                + " (" + numDepots + " depot" + (numDepots == 1 ? "" : "s")
+                                + " + " + stops.size() + " stops)");
             }
             return mat;
         }
         // Haversine
         double[] lats = new double[numNodes];
         double[] lons = new double[numNodes];
-        lats[0] = depotLat;
-        lons[0] = depotLon;
+        for (int d = 0; d < numDepots; d++) {
+            lats[d] = depots.get(d).lat();
+            lons[d] = depots.get(d).lon();
+        }
         for (int i = 0; i < stops.size(); i++) {
-            lats[i + 1] = stops.get(i).lat();
-            lons[i + 1] = stops.get(i).lon();
+            lats[numDepots + i] = stops.get(i).lat();
+            lons[numDepots + i] = stops.get(i).lon();
         }
         long[][] matrix = new long[numNodes][numNodes];
         for (int i = 0; i < numNodes; i++) {
@@ -326,8 +346,21 @@ public final class RoutingCompiler {
     private void validate() {
         if (vehicles.isEmpty()) throw new ModelException("At least one vehicle is required.");
         if (stops.isEmpty())    throw new ModelException("At least one stop is required.");
-        if (depotLat == 0 && depotLon == 0 && distanceSource instanceof DistanceSource.Haversine) {
-            throw new ModelException("Depot coordinates must be set when using haversine distances.");
+        if (distanceSource instanceof DistanceSource.Haversine) {
+            for (DepotDef d : depots) {
+                if (d.lat() == 0 && d.lon() == 0) {
+                    throw new ModelException("Depot coordinates must be set when using haversine distances.");
+                }
+            }
         }
+    }
+
+    private int resolveDepotIndex(String depotId, Map<String, Integer> depotIndexOf, String vehicleId) {
+        Integer idx = depotIndexOf.get(depotId);
+        if (idx == null) {
+            throw new ModelException("Vehicle '" + vehicleId
+                    + "' references unknown depot id: '" + depotId + "'.");
+        }
+        return idx;
     }
 }
