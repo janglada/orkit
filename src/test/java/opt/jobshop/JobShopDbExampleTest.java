@@ -66,18 +66,30 @@ class JobShopDbExampleTest {
 
             // ── Load work orders (each becomes one job) ──────────────────────
             List<Map<String, Object>> orders = db.select(
-                    "SELECT order_no, product_id, qty, due_min FROM work_order ORDER BY order_no");
+                    "SELECT order_no, product_id, qty, release_min, due_min "
+                    + "FROM work_order ORDER BY order_no");
 
             // orderNo → expected operation count (from the product's routing)
             Map<String, Integer> expectedSteps = new LinkedHashMap<>();
             // orderNo → 0-based indices of operations that are CNC-flexible
             Map<String, List<Integer>> cncFlexibleOps = new LinkedHashMap<>();
+            // orderNo → hard earliest start of the first operation (release date)
+            Map<String, Long> releaseOfFirst = new LinkedHashMap<>();
+            // orderNo → soft due date of the last operation
+            Map<String, Long> dueOfLast = new LinkedHashMap<>();
 
             var builder = Optimize.jobShop().machines(machineIds.toArray(String[]::new));
 
             for (Map<String, Object> order : orders) {
                 String orderNo   = TestDatabase.asString(order, "order_no");
                 String productId = TestDatabase.asString(order, "product_id");
+                // SQLite may return small INTEGERs as Integer or Long; coerce via Number.
+                Number relNum = (Number) order.get("release_min");
+                Number dueNum = (Number) order.get("due_min");
+                Long releaseMin = (relNum == null) ? null : relNum.longValue();
+                Long dueMin      = (dueNum == null) ? null : dueNum.longValue();
+                if (releaseMin != null) releaseOfFirst.put(orderNo, releaseMin);
+                if (dueMin     != null) dueOfLast.put(orderNo, dueMin);
 
                 // Routing steps for this product, in step order
                 List<Map<String, Object>> steps = db.select(
@@ -94,6 +106,7 @@ class JobShopDbExampleTest {
                 }
                 cncFlexibleOps.put(orderNo, flexibleIdx);
 
+                int lastIdx = steps.size() - 1;
                 builder.job(orderNo, j -> {
                     OperationConfig op = null;
                     for (int i = 0; i < steps.size(); i++) {
@@ -112,9 +125,21 @@ class JobShopDbExampleTest {
                                     .toArray(String[]::new);
                             op.onAnyOf(candidates).takes(duration);
                         }
+                        // Hard release date on the first operation of the order.
+                        if (i == 0 && releaseMin != null) {
+                            op.releaseAt(releaseMin);
+                        }
+                        // Soft due date on the last operation of the order.
+                        if (i == lastIdx && dueMin != null) {
+                            op.dueBy(dueMin);
+                        }
                     }
                 });
             }
+
+            // Minimize makespan plus a weighted tardiness penalty so the soft due
+            // dates above take effect (release dates are hard constraints regardless).
+            builder.minimize(Goals.minimizeMakespanAndTardiness(1, 5));
 
             // ── Solve ────────────────────────────────────────────────────────
             JobShopSchedule schedule = builder.solver()
@@ -144,6 +169,15 @@ class JobShopDbExampleTest {
             // Precedence holds within each job (operation i ends before i+1 starts)
             for (String orderNo : expectedSteps.keySet()) {
                 assertPrecedence(schedule.operationsOf(orderNo), orderNo);
+            }
+
+            // Hard release dates: the first op of a released order starts at or after its release.
+            for (Map.Entry<String, Long> e : releaseOfFirst.entrySet()) {
+                ScheduledOperation first = schedule.operationsOf(e.getKey()).get(0);
+                assertThat(first.start())
+                        .as("order %s first op must start at or after release %d",
+                                e.getKey(), e.getValue())
+                        .isGreaterThanOrEqualTo(e.getValue());
             }
 
             // Flexible CNC operations land on an actual CNC-group machine

@@ -1,6 +1,7 @@
 package opt.jobshop;
 
 import opt.ModelException;
+import opt.internal.Validate;
 
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -17,6 +18,9 @@ public final class OperationConfig {
     private List<String> machines;
     private int duration;
     private String type;
+    private Long releaseTime;
+    private Long deadline;
+    private Long dueTime;
 
     OperationConfig(JobConfig job) {
         this.job = job;
@@ -56,6 +60,41 @@ public final class OperationConfig {
         return this;
     }
 
+    /**
+     * Sets the earliest start time (release date) of this operation. The
+     * operation's start variable is bounded below by {@code releaseTime}. May
+     * be combined with a {@link #deadlineAt(long) deadline}; the two must leave
+     * room for the processing duration.
+     */
+    public OperationConfig releaseAt(long releaseTime) {
+        Validate.nonNegative(releaseTime, "release time");
+        this.releaseTime = releaseTime;
+        return this;
+    }
+
+    /**
+     * Sets the latest end time (hard deadline) of this operation. The
+     * operation's end variable is bounded above by {@code deadline}. A deadline
+     * tighter than the unconstrained optimum forces the schedule to compress.
+     */
+    public OperationConfig deadlineAt(long deadline) {
+        Validate.nonNegative(deadline, "deadline");
+        this.deadline = deadline;
+        return this;
+    }
+
+    /**
+     * Sets a soft due date for this operation. Tardiness
+     * {@code max(0, end - due)} is penalized in the objective when a tardiness
+     * goal is selected (see {@link opt.jobshop.Goals}). Has no effect under the
+     * default {@code MinimizeMakespan} goal.
+     */
+    public OperationConfig dueBy(long dueTime) {
+        Validate.nonNegative(dueTime, "due time");
+        this.dueTime = dueTime;
+        return this;
+    }
+
     /** Finalizes this operation and returns a new one for the next step in the job. */
     public OperationConfig then() {
         job.commitOperation(this);
@@ -74,5 +113,17 @@ public final class OperationConfig {
 
     String type() {
         return type;
+    }
+
+    Long releaseTime() {
+        return releaseTime;
+    }
+
+    Long deadline() {
+        return deadline;
+    }
+
+    Long dueTime() {
+        return dueTime;
     }
 }

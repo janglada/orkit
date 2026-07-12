@@ -11,7 +11,13 @@ public record OperationDef(
         /** Processing duration in model time units. */
         int duration,
         /** Setup type tag used for sequence-dependent changeover; {@code null} if untyped. */
-        String type
+        String type,
+        /** Earliest start time (release date); {@code null} if unconstrained. */
+        Long releaseTime,
+        /** Latest end time (hard deadline); {@code null} if unconstrained. */
+        Long deadline,
+        /** Soft due date for tardiness penalties (compared against this op's end); {@code null} if unconstrained. */
+        Long dueTime
 ) {
     /** Returns {@code true} if this operation may run on more than one candidate machine. */
     public boolean isFlexible() {

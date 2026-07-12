@@ -101,6 +101,39 @@ across models). Flexible (`onAnyOf`) typed operations pay the setup of whichever
 machine they land on. With no setup matrix configured, the model behaves exactly
 as before (plain `NoOverlap` per machine).
 
+#### Release dates, deadlines, and soft due dates
+
+Each operation may carry a hard time window and/or a soft due date, set via
+`.releaseAt(t)`, `.deadlineAt(t)`, and `.dueBy(t)` on the operation configurator.
+
+- `.releaseAt(t)` — earliest start (release date); the start variable is bounded
+  below by `t`. Applied as a hard constraint regardless of objective.
+- `.deadlineAt(t)` — latest end (hard deadline); the end variable is bounded
+  above by `t`. A deadline tighter than the unconstrained optimum forces the
+  schedule to compress; one tighter than the work itself is infeasible.
+- `.dueBy(t)` — soft due date; tardiness `max(0, end - t)` is penalized in the
+  objective only under a tardiness-including goal. Inert under the default
+  `MinimizeMakespan` goal.
+
+`releaseAt` + `duration` must not exceed `deadlineAt` (rejected at build time).
+The objective is chosen with `.minimize(...)`:
+
+```java
+JobShopSchedule schedule = Optimize.jobShop()
+        .machines("MILL", "LATHE")
+        .minimize(Goals.minimizeMakespanAndTardiness(1, 10)) // makespan + 10·tardiness
+        .job("J1", j -> j.operation().on("MILL").takes(10).releaseAt(5)
+                .then().on("LATHE").takes(15).dueBy(40))
+        .job("J2", j -> j.operation().on("LATHE").takes(8).deadlineAt(20))
+        .solver().timeLimit(Duration.ofSeconds(15)).solve();
+```
+
+Available goals: `Goals.minimizeMakespan()` (default),
+`Goals.minimizeTardiness(weight)`, and
+`Goals.minimizeMakespanAndTardiness(makespanWeight, tardinessWeight)`. Weights
+must be `> 0`. Flexible (`onAnyOf`) operations share their start/end across
+candidate machines, so release/deadline windows apply without presence gating.
+
 ### Employee shift scheduling
 
 ```java

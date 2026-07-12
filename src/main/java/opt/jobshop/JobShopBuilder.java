@@ -34,6 +34,9 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
     // initialTypes: (machine -> type)
     private final Map<String, String> initialTypes = new LinkedHashMap<>();
 
+    // Objective — default minimizes makespan; release/deadline/due are set per operation.
+    private JobShopGoal goal = new JobShopGoal.MinimizeMakespan();
+
     /** Registers one or more machines that operations can be scheduled on. */
     public JobShopBuilder machines(String... machineIds) {
         for (String m : machineIds) {
@@ -112,10 +115,22 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
         return this;
     }
 
-    /** Builds an immutable, reusable problem instance (minimizes makespan). */
+    /**
+     * Sets the optimization objective. The default {@link Goals#minimizeMakespan()}
+     * preserves historical behaviour. Use {@link Goals#minimizeTardiness(long)} or
+     * {@link Goals#minimizeMakespanAndTardiness(long, long)} to penalize soft due
+     * dates (set per operation via {@link OperationConfig#dueBy(long)}).
+     */
+    public JobShopBuilder minimize(JobShopGoal goal) {
+        if (goal == null) throw new ModelException("minimize() goal must not be null.");
+        this.goal = goal;
+        return this;
+    }
+
+    /** Builds an immutable, reusable problem instance. */
     public OptimizationProblem<JobShopSchedule> build() {
         SetupMatrix matrix = buildSetupMatrix();
-        return new JobShopProblem(List.copyOf(machines), List.copyOf(jobs), matrix);
+        return new JobShopProblem(List.copyOf(machines), List.copyOf(jobs), matrix, goal);
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
@@ -198,16 +213,18 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
         private final List<String> machines;
         private final List<JobDef> jobs;
         private final SetupMatrix setupMatrix;
+        private final JobShopGoal goal;
 
-        JobShopProblem(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix) {
+        JobShopProblem(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal) {
             this.machines = machines;
             this.jobs = jobs;
             this.setupMatrix = setupMatrix;
+            this.goal = goal;
         }
 
         @Override
         public Solver<JobShopSchedule> solver() {
-            return new JobShopSolver(machines, jobs, setupMatrix);
+            return new JobShopSolver(machines, jobs, setupMatrix, goal);
         }
     }
 
@@ -216,15 +233,17 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
         private final List<String> machines;
         private final List<JobDef> jobs;
         private final SetupMatrix setupMatrix;
+        private final JobShopGoal goal;
         private Duration timeLimit = Duration.ofMinutes(1);
         private int workers = 1;
         private long seed = 0;
         private boolean verbose = false;
 
-        JobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix) {
+        JobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal) {
             this.machines = machines;
             this.jobs = jobs;
             this.setupMatrix = setupMatrix;
+            this.goal = goal;
         }
 
         @Override public Solver<JobShopSchedule> timeLimit(Duration limit) { timeLimit = limit; return this; }
@@ -234,7 +253,7 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
 
         @Override
         public JobShopSchedule solve() {
-            return new CpSatJobShopSolver(machines, jobs, setupMatrix)
+            return new CpSatJobShopSolver(machines, jobs, setupMatrix, goal)
                     .timeLimit(timeLimit)
                     .workers(workers)
                     .seed(seed)

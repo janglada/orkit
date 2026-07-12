@@ -96,22 +96,27 @@ INSERT INTO routing_step (product_id, step_no, machine_group, machine_id, durati
 
 -- ── Work orders ─────────────────────────────────────────────────────────────
 --  Concrete production orders. qty is recorded for realism (the model treats
---  each order as one job; a multi-unit order would expand into N jobs). due_min
---  is nullable — captured for reporting, not enforced as a hard constraint.
+--  each order as one job; a multi-unit order would expand into N jobs).
+--    * release_min — hard earliest start for the order's first operation
+--      (nullable ⇒ unconstrained). Applied via OperationConfig.releaseAt(...).
+--    * due_min    — soft due date for the order's last operation, penalized as
+--      tardiness under a tardiness-including goal. Applied via
+--      OperationConfig.dueBy(...). Nullable ⇒ no due date.
 DROP TABLE IF EXISTS work_order;
 CREATE TABLE work_order (
-    order_no   TEXT    PRIMARY KEY,
-    product_id TEXT    NOT NULL,
-    qty        INTEGER NOT NULL DEFAULT 1,
-    due_min    INTEGER,                                     -- nullable
+    order_no    TEXT    PRIMARY KEY,
+    product_id  TEXT    NOT NULL,
+    qty         INTEGER NOT NULL DEFAULT 1,
+    release_min INTEGER,                                     -- nullable; hard earliest start of op 0
+    due_min     INTEGER,                                     -- nullable; soft due date of the last op
     FOREIGN KEY (product_id) REFERENCES product(id)
 );
 
-INSERT INTO work_order (order_no, product_id, qty, due_min) VALUES
-    ('WO-1001', 'CABINET', 1, 240),
-    ('WO-1002', 'TABLE',   1, 150),
-    ('WO-1003', 'SHELF',   1, NULL),
-    ('WO-1004', 'DOOR',    1, 180),
-    ('WO-1005', 'CABINET', 1, 300),
-    ('WO-1006', 'TABLE',   1, NULL),
-    ('WO-1007', 'SHELF',   1, 120);
+INSERT INTO work_order (order_no, product_id, qty, release_min, due_min) VALUES
+    ('WO-1001', 'CABINET', 1, NULL, 240),
+    ('WO-1002', 'TABLE',   1, 30,  150),
+    ('WO-1003', 'SHELF',   1, NULL, NULL),
+    ('WO-1004', 'DOOR',    1, 10,  180),
+    ('WO-1005', 'CABINET', 1, 40,  300),
+    ('WO-1006', 'TABLE',   1, 50,  NULL),
+    ('WO-1007', 'SHELF',   1, NULL, 120);

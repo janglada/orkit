@@ -3,6 +3,7 @@ package opt.jobshop.internal;
 import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
+import opt.jobshop.JobShopGoal;
 import opt.jobshop.JobShopSchedule;
 import opt.jobshop.ScheduledOperation;
 
@@ -15,6 +16,7 @@ public final class CpSatJobShopSolver {
     private final List<String> machines;
     private final List<JobDef> jobs;
     private final SetupMatrix setupMatrix;
+    private final JobShopGoal goal;
 
     private double timeLimitSeconds = 60;
     private int workers = 1;
@@ -30,13 +32,16 @@ public final class CpSatJobShopSolver {
             /** Flexible: per-candidate-machine optional intervals. */
             Map<String, IntervalVar> optionals,
             /** Flexible: per-candidate-machine presence literals. */
-            Map<String, BoolVar> presences) {}
+            Map<String, BoolVar> presences,
+            /** Soft tardiness variable; {@code null} when the op has no due date. */
+            IntVar tardiness) {}
 
-    /** Creates a solver for the given machines, jobs, and setup matrix. Internal; obtain via {@link opt.jobshop.JobShopBuilder#solver()}. */
-    public CpSatJobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix) {
+    /** Creates a solver for the given machines, jobs, setup matrix, and objective. Internal; obtain via {@link opt.jobshop.JobShopBuilder#solver()}. */
+    public CpSatJobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal) {
         this.machines = List.copyOf(machines);
         this.jobs = List.copyOf(jobs);
         this.setupMatrix = (setupMatrix == null) ? SetupMatrix.empty() : setupMatrix;
+        this.goal = (goal == null) ? new JobShopGoal.MinimizeMakespan() : goal;
     }
 
     /** Sets the maximum time the CP-SAT solver may run. */
@@ -67,23 +72,56 @@ public final class CpSatJobShopSolver {
         long numOps = jobs.stream().mapToLong(j -> j.operations().size()).sum();
         // Each operation has at most one predecessor, so total setup slack <= numOps * maxSetup.
         long maxSetup = setupMatrix.isEmpty() ? 0 : setupMatrix.maxSetupValue();
-        long horizon = totalDuration + numOps * maxSetup;
+        long computedHorizon = totalDuration + numOps * maxSetup;
+        // A release date can push a job's completion past the unconstrained horizon
+        // (computedHorizon already sums every job's duration, so it dominates any
+        // single job's duration + setup slack; adding the largest release upper-bounds
+        // the latest a released job can finish). A hard deadline may also exceed it.
+        long maxRelease = jobs.stream()
+                .flatMap(j -> j.operations().stream())
+                .mapToLong(op -> op.releaseTime() == null ? 0 : op.releaseTime())
+                .max()
+                .orElse(0);
+        long maxDeadline = jobs.stream()
+                .flatMap(j -> j.operations().stream())
+                .mapToLong(op -> op.deadline() == null ? 0 : op.deadline())
+                .max()
+                .orElse(0);
+        long horizon = Math.max(computedHorizon + maxRelease, maxDeadline);
 
         CpModel model = new CpModel();
 
         List<List<OpIntervals>> allIntervals = new ArrayList<>();
+        // Tardiness variables for operations carrying a soft due date (see objective dispatch).
+        List<IntVar> tardinessVars = new ArrayList<>();
 
         for (JobDef job : jobs) {
             List<OpIntervals> jobIntervals = new ArrayList<>();
             for (OperationDef op : job.operations()) {
-                IntVar start = model.newIntVar(0, horizon, "s_" + job.id() + "_" + op.index());
-                IntVar end   = model.newIntVar(0, horizon, "e_" + job.id() + "_" + op.index());
+                // Hard time window: narrow the start/end domains directly (the
+                // booking trick) — release bounds start below, deadline bounds end
+                // above. Flexible ops share the same start/end across candidates,
+                // so the window applies without presence gating.
+                long startLb = (op.releaseTime() != null) ? op.releaseTime() : 0L;
+                long endUb   = (op.deadline()   != null) ? op.deadline()   : horizon;
+                long startUb = Math.max(startLb, endUb - op.duration());
+                IntVar start = model.newIntVar(startLb, startUb, "s_" + job.id() + "_" + op.index());
+                IntVar end   = model.newIntVar(0, endUb, "e_" + job.id() + "_" + op.index());
+
+                IntVar tardiness = null;
+                if (op.dueTime() != null) {
+                    tardiness = model.newIntVar(0, horizon, "tard_" + job.id() + "_" + op.index());
+                    // tardiness >= end - due  (and >= 0 from the domain); minimizing
+                    // tardiness drives it to max(0, end - due).
+                    model.addGreaterOrEqual(tardiness, LinearExpr.affine(end, 1, -op.dueTime()));
+                    tardinessVars.add(tardiness);
+                }
 
                 if (!op.isFlexible()) {
                     IntervalVar interval = model.newIntervalVar(
                             start, model.newConstant(op.duration()), end,
                             "i_" + job.id() + "_" + op.index());
-                    jobIntervals.add(new OpIntervals(start, end, interval, Map.of(), Map.of()));
+                    jobIntervals.add(new OpIntervals(start, end, interval, Map.of(), Map.of(), tardiness));
                 } else {
                     Map<String, IntervalVar> optionals = new LinkedHashMap<>();
                     Map<String, BoolVar> presences     = new LinkedHashMap<>();
@@ -96,7 +134,7 @@ public final class CpSatJobShopSolver {
                         presences.put(machine, pres);
                     }
                     model.addExactlyOne(presences.values().toArray(new BoolVar[0]));
-                    jobIntervals.add(new OpIntervals(start, end, null, optionals, presences));
+                    jobIntervals.add(new OpIntervals(start, end, null, optionals, presences, tardiness));
                 }
             }
             allIntervals.add(jobIntervals);
@@ -134,13 +172,31 @@ public final class CpSatJobShopSolver {
             }
         }
 
-        // Makespan: max end across all last operations in each job
+        // Makespan: max end across all last operations in each job (always defined;
+        // it is part of the objective only for makespan-including goals).
         IntVar makespan = model.newIntVar(0, horizon, "makespan");
         for (int j = 0; j < jobs.size(); j++) {
             List<OpIntervals> jobOps = allIntervals.get(j);
             model.addLessOrEqual(jobOps.get(jobOps.size() - 1).end(), makespan);
         }
-        model.minimize(makespan);
+
+        // Objective dispatch. Hard release/deadline constraints are already encoded
+        // above; the goal selects what is minimized. Soft due dates take effect only
+        // under a goal that includes tardiness.
+        LinearExprBuilder obj = LinearExpr.newBuilder();
+        switch (goal) {
+            case JobShopGoal.MinimizeMakespan ignored ->
+                    obj.addTerm(makespan, 1);
+            case JobShopGoal.MinimizeTardiness t -> {
+                for (IntVar tard : tardinessVars) obj.addTerm(tard, t.weight());
+            }
+            case JobShopGoal.MinimizeMakespanAndTardiness mt -> {
+                obj.addTerm(makespan, mt.makespanWeight());
+                for (IntVar tard : tardinessVars) obj.addTerm(tard, mt.tardinessWeight());
+            }
+            case null, default -> throw new ModelException("Unsupported job-shop goal: " + goal);
+        }
+        model.minimize(obj.build());
 
         // Solve
         CpSolver solver = new CpSolver();
@@ -183,7 +239,7 @@ public final class CpSatJobShopSolver {
         }
 
         OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
-                ? OptionalDouble.of(makespanValue)
+                ? OptionalDouble.of(solver.objectiveValue())
                 : OptionalDouble.empty();
 
         return new JobShopSchedule(status, objValue, runtime, makespanValue, machines, operations);

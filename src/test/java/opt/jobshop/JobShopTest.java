@@ -12,6 +12,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 class JobShopTest {
 
@@ -903,5 +904,175 @@ class JobShopTest {
         List<ScheduledOperation> ops = schedule.timelineOf("M1");
         assertThat(ops.get(0).job()).isEqualTo("J1"); // A first
         assertThat(ops.get(1).start() - ops.get(0).end()).isEqualTo(3);
+    }
+
+    // ── T-J44: release date forces the operation to start at or after it ──────
+
+    @Test
+    void releaseDateLowerBoundsOperationStart() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(5).releaseAt(10))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        // The earliest start is the release date; makespan = 10 + 5.
+        ScheduledOperation op = schedule.operationsOf("J1").get(0);
+        assertThat(op.start()).isEqualTo(10);
+        assertThat(op.end()).isEqualTo(15);
+        assertThat(schedule.makespan()).isEqualTo(15);
+    }
+
+    // ── T-J45: a deadline forces the operation to run first so it can finish in time
+
+    @Test
+    void deadlineForcesOrderToMeetDueTime() {
+        // Two 5-unit ops on one machine: makespan 10 either order. J1 has a
+        // deadline of 7, so it must run first (end 5 <= 7); running second
+        // would end at 10 and violate the deadline.
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(5).deadlineAt(7))
+                .job("J2", j -> j.operation().on("M1").takes(5))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        List<ScheduledOperation> ops = schedule.timelineOf("M1");
+        assertThat(ops.get(0).job()).isEqualTo("J1");          // J1 forced first
+        assertThat(ops.get(0).end()).isLessThanOrEqualTo(7);   // deadline respected
+        assertThat(ops.get(1).start()).isEqualTo(5);          // J2 immediately after
+        assertThat(schedule.makespan()).isEqualTo(10);
+    }
+
+    // ── T-J46: a deadline tighter than the work is infeasible ────────────────
+
+    @Test
+    void deadlineTighterThanDurationIsInfeasible() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(5).deadlineAt(3))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.INFEASIBLE);
+    }
+
+    // ── T-J47: soft due date past the optimum ⇒ zero tardiness, objective 0 ──
+
+    @Test
+    void softDueDatePastOptimumYieldsZeroTardiness() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .minimize(Goals.minimizeTardiness(2))
+                .job("J1", j -> j.operation().on("M1").takes(5).dueBy(100))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(schedule.isFeasible()).isTrue();
+        // end = 5 ≤ due 100 ⇒ tardiness 0 ⇒ objective = 2 * 0 = 0.
+        assertThat(schedule.objective().getAsDouble()).isCloseTo(0.0, within(1e-9));
+    }
+
+    // ── T-J48: soft due date tighter than the work ⇒ tardiness > 0, objective = weight*tardiness
+
+    @Test
+    void softDueDateTighterThanWorkIncurTardiness() {
+        // Op takes 5, due at 3 ⇒ minimum tardiness = 5 - 3 = 2; objective = 2 * 2 = 4.
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .minimize(Goals.minimizeTardiness(2))
+                .job("J1", j -> j.operation().on("M1").takes(5).dueBy(3))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(schedule.operationsOf("J1").get(0).end()).isEqualTo(5);
+        assertThat(schedule.objective().getAsDouble()).isCloseTo(4.0, within(1e-9));
+    }
+
+    // ── T-J49: combined makespan + tardiness objective ───────────────────────
+
+    @Test
+    void combinedMakespanAndTardinessObjective() {
+        // makespan weight 1, tardiness weight 100. Op takes 5 due at 3 ⇒
+        // objective = 1 * 5 (makespan) + 100 * 2 (tardiness) = 205.
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .minimize(Goals.minimizeMakespanAndTardiness(1, 100))
+                .job("J1", j -> j.operation().on("M1").takes(5).dueBy(3))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(schedule.makespan()).isEqualTo(5);
+        assertThat(schedule.objective().getAsDouble()).isCloseTo(205.0, within(1e-6));
+    }
+
+    // ── T-J50: soft due dates are inert under the default MinimizeMakespan goal
+
+    @Test
+    void softDueDateInertUnderDefaultMakespanGoal() {
+        // Same op as T-J48 but with the default makespan goal: the due date is
+        // ignored, the schedule is identical to one without it.
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(5).dueBy(3))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(schedule.makespan()).isEqualTo(5);
+    }
+
+    // ── T-J51: release + duration > deadline is rejected at commit ────────────
+
+    @Test
+    void releasePlusDurationExceedingDeadlineThrows() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(10).releaseAt(5).deadlineAt(10))
+                .solver().solve()).isInstanceOf(ModelException.class)
+                .hasMessageContaining("exceeds deadline");
+    }
+
+    // ── T-J52: negative release / deadline / due are rejected ─────────────────
+
+    @Test
+    void negativeReleaseDeadlineDueThrowModelException() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(3).releaseAt(-1))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining(">= 0");
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(3).deadlineAt(-1))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining(">= 0");
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(3).dueBy(-1))
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining(">= 0");
+    }
+
+    // ── T-J53: non-positive tardiness weights and null goal are rejected ──────
+
+    @Test
+    void nonPositiveWeightsAndNullGoalAreRejected() {
+        assertThatThrownBy(() -> Goals.minimizeTardiness(0))
+                .isInstanceOf(ModelException.class).hasMessageContaining("> 0");
+        assertThatThrownBy(() -> Goals.minimizeTardiness(-1))
+                .isInstanceOf(ModelException.class).hasMessageContaining("> 0");
+        assertThatThrownBy(() -> Goals.minimizeMakespanAndTardiness(0, 1))
+                .isInstanceOf(ModelException.class).hasMessageContaining("> 0");
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1").minimize(null))
+                .isInstanceOf(ModelException.class).hasMessageContaining("null");
+    }
+
+    // ── T-J54: release/deadline window on a flexible op bounds the shared start/end
+
+    @Test
+    void flexibleOpRespectsReleaseDeadlineWindow() {
+        JobShopSchedule schedule = Optimize.jobShop()
+                .machines("M1", "M2")
+                .job("J1", j -> j.operation().onAnyOf("M1", "M2").takes(5)
+                        .releaseAt(10).deadlineAt(20))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+
+        assertThat(schedule.status()).isEqualTo(SolveStatus.OPTIMAL);
+        ScheduledOperation op = schedule.operationsOf("J1").get(0);
+        assertThat(op.machine()).isIn("M1", "M2");
+        assertThat(op.start()).isGreaterThanOrEqualTo(10); // release
+        assertThat(op.end()).isLessThanOrEqualTo(20);      // deadline
+        assertThat(op.end() - op.start()).isEqualTo(5);
     }
 }

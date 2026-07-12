@@ -31,7 +31,17 @@ public final class JobConfig {
             throw new ModelException(
                     "Operation " + committed.size() + " must set a duration via .takes(...).");
         }
-        committed.add(new OperationDef(committed.size(), op.machines(), op.duration(), op.type()));
+        Long release = op.releaseTime();
+        Long deadline = op.deadline();
+        if (release != null && deadline != null && release + op.duration() > deadline) {
+            throw new ModelException(
+                    "Operation " + committed.size()
+                            + " release (" + release + ") + duration (" + op.duration()
+                            + ") exceeds deadline (" + deadline
+                            + "); the operation cannot fit in its time window.");
+        }
+        committed.add(new OperationDef(committed.size(), op.machines(), op.duration(), op.type(),
+                release, deadline, op.dueTime()));
     }
 
     /** Called by the builder after the lambda returns to commit the last pending operation. */
