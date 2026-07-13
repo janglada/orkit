@@ -109,6 +109,17 @@ public final class RoutingCompiler {
         RoutingIndexManager manager = new RoutingIndexManager(numNodes, numVehicles, starts, ends);
         RoutingModel routing        = new RoutingModel(manager);
 
+        // ── Transit model — limitation: NOT time-dependent ──────────────────────
+        // OR-Tools' native RoutingModel transit callbacks take only (fromNode, toNode)
+        // (optionally vehicle) and CANNOT read the cumul/arrival-time variable during
+        // evaluation. The RoutingDimension therefore assumes transit is a function of
+        // (from, to, vehicle) only; time-of-day-dependent travel is not first-class.
+        // Consequence: travelSpeedKmh (used in buildTimeMatrix below) is a single GLOBAL
+        // scalar, not a time-banded profile, so a vehicle is assumed to travel at the
+        // same speed regardless of when it departs.
+        // Future extension point for true time-dependent travel: a CP-SAT routing
+        // solver (the pattern used by every other domain here), where per-arc travel
+        // time can depend on the departure-time IntVar via AddElement / interval logic.
         // Arc cost evaluator
         int transitCb = routing.registerTransitCallback((fromIdx, toIdx) -> {
             int from = (int) manager.indexToNode(fromIdx);

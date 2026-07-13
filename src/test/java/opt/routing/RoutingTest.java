@@ -3,6 +3,7 @@ package opt.routing;
 import opt.ModelException;
 import opt.Optimize;
 import opt.SolveStatus;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -1013,5 +1014,26 @@ class RoutingTest {
                         .stop("A", s -> s.at(0.15, 0.15).demand(1))
                         .solver().solve()
         ).isInstanceOf(ModelException.class).hasMessageContaining("non-blank");
+    }
+
+    // ── T-R47: time-dependent travel is NOT supported (deferred) ──────────────
+    // OR-Tools' native RoutingModel transit callback is (from,to)-only and cannot
+    // read the arrival-time variable, so travel time cannot vary by time of day.
+    // travelSpeedKmh is a single global scalar. True time-dependent travel would
+    // require a CP-SAT routing solver (see opt.routing package-info Limitation).
+    @Disabled("time-dependent travel is not supported — see plan, deferred")
+    @Test
+    void timeDependentTravelIsNotSupported() {
+        // Anchor for future work: today the global travelSpeedKmh applies uniformly
+        // regardless of departure time, so two identical-distance legs take the same
+        // time whether travelled at rush hour or overnight.
+        var plan = Optimize.vehicleRouting()
+                .depot("D", 0.0, 0.0)
+                .travelSpeedKmh(40)
+                .vehicle("v1", v -> {})
+                .stop("A", s -> s.at(0.0, 0.1).demand(1))
+                .stop("B", s -> s.at(0.0, 0.2).demand(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
     }
 }

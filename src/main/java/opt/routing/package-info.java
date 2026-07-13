@@ -14,6 +14,15 @@
  * {@link opt.ModelException}. Each solved {@link opt.routing.Route} reports its
  * start depot via {@link opt.routing.Route#depotId()}.
  *
+ * <p><b>Limitation: no time-dependent travel.</b> The native OR-Tools
+ * {@code RoutingModel} transit callback is a pure function of
+ * {@code (fromNode, toNode)} (optionally vehicle) and cannot read the
+ * arrival-time variable, so travel time cannot vary by time of day.
+ * {@code travelSpeedKmh} is therefore a single global scalar, not a
+ * time-banded speed profile. Static time windows and per-vehicle depots
+ * are fully supported; true time-dependent travel would require a CP-SAT
+ * routing solver and is not yet implemented.
+ *
  * <p>Entry point: {@link opt.Optimize#vehicleRouting()}.
  */
 package opt.routing;
