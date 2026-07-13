@@ -350,6 +350,24 @@ for (StockAssignment a : sol.assignments()) {
 
 All required pieces must be placed; the model is infeasible if total piece length exceeds total stock length. `quantity` expands a stock or piece type into multiple instances. `MinimizeWaste` minimizes total length consumed; `MinimizeStockUsed` minimizes the number of rolls used (different behaviors when rolls have different lengths).
 
+**2D non-guillotine cutting.** Declare a `.width(...)` on every stock and piece to switch to the 2D path: each stock becomes a sheet (length × width) and pieces are placed as rectangles with X/Y origins, subject to pairwise 2D no-overlap constraints. `MinimizeWaste` is dimension-aware — it minimizes total length consumed in 1D but total **area** consumed (`used[r] * length * width`) in 2D; `MinimizeStockUsed` (sheet count) and `MinimizeTotalCost` work the same in either dimension. Mixed 1D/2D models (some items with width, some without) are rejected. Guillotine cutting is planned; 2D non-guillotine is supported today.
+
+```java
+CuttingSolution sol = Optimize.cuttingStock()
+        .stock("sheet", s -> s.length(200).width(150).cost(120).quantity(2))
+        .required("blank-A", p -> p.length(60).width(40).quantity(4))
+        .required("blank-B", p -> p.length(50).width(30).quantity(3))
+        .minimize(Goals.minimizeWaste())   // minimizes total area consumed
+        .solver().timeLimit(Duration.ofSeconds(15)).workers(8).solve();
+for (StockAssignment a : sol.assignments()) {
+    System.out.printf("  %s (%dx%d): %d pieces, area waste=%d%n",
+            a.stockId(), a.length(), a.width(), a.pieces().size(), a.waste());
+    for (CutPiece c : a.pieces()) {
+        System.out.printf("    %s %dx%d at (%d,%d)%n", c.pieceId(), c.length(), c.width(), c.x(), c.y());
+    }
+}
+```
+
 ## Result API
 
 Every `solve()` returns a `Solution` subtype exposing:

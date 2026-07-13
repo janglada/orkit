@@ -1,6 +1,7 @@
 package opt.cutting;
 
 import opt.ModelException;
+import opt.internal.Validate;
 
 /**
  * Fluent configurator for a single demanded piece type.
@@ -10,6 +11,7 @@ import opt.ModelException;
 public final class PieceConfig {
 
     long length;
+    int width = 0;
     int quantity = 1;
 
     PieceConfig() {}
@@ -18,6 +20,18 @@ public final class PieceConfig {
     public PieceConfig length(long length) {
         if (length < 1) throw new ModelException("length() must be >= 1, got: " + length);
         this.length = length;
+        return this;
+    }
+
+    /**
+     * Sets the width of one piece of this type, enabling the 2D (non-guillotine) cutting
+     * path. Must be {@code >= 1}. When left unset (or set to 0) the piece is treated as
+     * 1D. If any stock or piece declares a width, then every stock and piece must declare
+     * one — mixed 1D/2D models are rejected at solve time.
+     */
+    public PieceConfig width(int width) {
+        Validate.atLeastOne(width, "width");
+        this.width = width;
         return this;
     }
 
@@ -30,6 +44,10 @@ public final class PieceConfig {
 
     long length() {
         return length;
+    }
+
+    int width() {
+        return width;
     }
 
     int quantity() {

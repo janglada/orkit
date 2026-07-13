@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/** Fluent builder for 1D cutting-stock problems. Entry point: {@code Optimize.cuttingStock()}. */
+/** Fluent builder for cutting-stock problems (1D or 2D non-guillotine). Entry point: {@code Optimize.cuttingStock()}. */
 public final class CuttingBuilder implements OptimizationProblem<CuttingSolution> {
 
     static {
@@ -92,7 +92,7 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
         for (StockConfig sc : rawStocks) {
             for (int q = 0; q < sc.quantity(); q++) {
                 stockCounter++;
-                stockDefs.add(new StockDef(sc.length() + "#" + stockCounter, sc.length(), sc.cost()));
+                stockDefs.add(new StockDef(sc.length() + "#" + stockCounter, sc.length(), sc.width(), sc.cost()));
             }
         }
 
@@ -101,7 +101,7 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
         for (PieceConfig pc : rawPieces) {
             for (int q = 0; q < pc.quantity(); q++) {
                 pieceCounter++;
-                pieceDefs.add(new PieceDef(pc.length() + "#" + pieceCounter, pc.length()));
+                pieceDefs.add(new PieceDef(pc.length() + "#" + pieceCounter, pc.length(), pc.width()));
             }
         }
 

@@ -145,6 +145,105 @@ class CuttingDbExampleTest {
         }
     }
 
+    // ── T-DB-Ct2: 2D non-guillotine sheet cutting from a database ────────────
+
+    @Test
+    void sheetCutting2dFromDatabaseIsFeasibleAndWithinBounds() throws SQLException {
+        try (TestDatabase db = TestDatabase.load("db/cutting2d.sql")) {
+
+            // ── Load stock sheets ─────────────────────────────────────────────
+            List<Map<String, Object>> stockRows =
+                    db.select("SELECT id, length, width, quantity, cost FROM stock ORDER BY id");
+
+            // ── Load pieces ───────────────────────────────────────────────────
+            List<Map<String, Object>> pieceRows =
+                    db.select("SELECT id, length, width, quantity FROM piece ORDER BY id");
+
+            var builder = Optimize.cuttingStock();
+            for (Map<String, Object> row : stockRows) {
+                String id = TestDatabase.asString(row, "id");
+                long length = TestDatabase.asLong(row, "length");
+                long width = TestDatabase.asLong(row, "width");
+                int quantity = TestDatabase.asInt(row, "quantity");
+                long cost = TestDatabase.asLong(row, "cost");
+                builder.stock(id, s -> s.length(length).width((int) width).quantity(quantity).cost(cost));
+            }
+            int totalPieceCount = 0;
+            long totalPieceArea = 0;
+            for (Map<String, Object> row : pieceRows) {
+                String id = TestDatabase.asString(row, "id");
+                long length = TestDatabase.asLong(row, "length");
+                long width = TestDatabase.asLong(row, "width");
+                int quantity = TestDatabase.asInt(row, "quantity");
+                totalPieceCount += quantity;
+                totalPieceArea += length * width * quantity;
+                builder.required(id, p -> p.length(length).width((int) width).quantity(quantity));
+            }
+            builder.minimize(Goals.minimizeWaste());
+
+            // ── Solve ─────────────────────────────────────────────────────────
+            CuttingSolution sol = builder.solver()
+                    .timeLimit(Duration.ofSeconds(10))
+                    .workers(8)
+                    .solve();
+
+            // ── Assertions ────────────────────────────────────────────────────
+            assertThat(sol.isFeasible())
+                    .as("2D sheet cutting must be feasible")
+                    .isTrue();
+
+            assertThat(sol.unplacedPieces())
+                    .as("all blanks must be placed")
+                    .isEmpty();
+
+            assertNoOverlap2D(sol.assignments());
+            assertWithinSheetBounds(sol.assignments());
+
+            // Every piece is on exactly one sheet.
+            Set<String> placed = new HashSet<>();
+            for (StockAssignment a : sol.assignments()) {
+                for (CutPiece c : a.pieces()) {
+                    assertThat(placed.add(c.pieceId()))
+                            .as("piece %s appears on more than one sheet", c.pieceId())
+                            .isTrue();
+                }
+            }
+            assertThat(placed.size())
+                    .as("all %d blanks must be placed", totalPieceCount)
+                    .isEqualTo(totalPieceCount);
+
+            // Area waste is non-negative and bounded.
+            assertThat(sol.totalAreaWaste())
+                    .as("area waste should be non-negative")
+                    .isGreaterThanOrEqualTo(0L);
+
+            // ── Readable report ───────────────────────────────────────────────
+            System.out.println("╔══════════════════════════════════════════════╗");
+            System.out.println("║  Sheet Cutting — DB-driven 2D Cutting Stock  ║");
+            System.out.println("╚══════════════════════════════════════════════╝");
+            System.out.printf("%nStatus        : %s%n", sol.status());
+            sol.objective().ifPresent(v -> System.out.printf("Objective     : %.0f (total area consumed)%n", v));
+            System.out.printf("Goal          : %s%n", Goals.minimizeWaste().getClass().getSimpleName());
+            System.out.printf("Sheets        : %d total, %d used%n",
+                    stockRows.stream().mapToInt(r -> TestDatabase.asInt(r, "quantity")).sum(),
+                    sol.totalStockUsed());
+            System.out.printf("Total area waste : %d mm²%n", sol.totalAreaWaste());
+
+            System.out.println("\n── Cut plan ────────────────────────────────────────────────");
+            System.out.printf("%-14s  %-8s  %-6s  %-30s%n", "Sheet", "L×W", "Waste", "Pieces");
+            System.out.println("-".repeat(74));
+            for (StockAssignment a : sol.assignments()) {
+                List<String> pieceDescs = a.pieces().stream()
+                        .map(c -> c.pieceId() + "(" + c.length() + "x" + c.width() + "@"
+                                + c.x() + "," + c.y() + ")")
+                        .toList();
+                String desc = pieceDescs.isEmpty() ? "-" : String.join(", ", pieceDescs);
+                System.out.printf("%-14s  %dx%-5d  %-6d  %s%n",
+                        a.stockId(), a.length(), a.width(), a.waste(), desc);
+            }
+        }
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────────
 
     private void assertNoOverlap1D(List<StockAssignment> assignments) {
@@ -167,6 +266,40 @@ class CuttingDbExampleTest {
                 assertThat(c.start() + c.length())
                         .as("piece %s exceeds roll %s length", c.pieceId(), a.stockId())
                         .isLessThanOrEqualTo(a.length());
+            }
+        }
+    }
+
+    private void assertNoOverlap2D(List<StockAssignment> assignments) {
+        for (StockAssignment a : assignments) {
+            List<CutPiece> cuts = new ArrayList<>(a.pieces());
+            for (int i = 0; i < cuts.size(); i++) {
+                for (int j = i + 1; j < cuts.size(); j++) {
+                    CutPiece c1 = cuts.get(i);
+                    CutPiece c2 = cuts.get(j);
+                    long xEnd1 = c1.x() + c1.length();
+                    long xEnd2 = c2.x() + c2.length();
+                    long yEnd1 = c1.y() + c1.width();
+                    long yEnd2 = c2.y() + c2.width();
+                    boolean xSeparated = xEnd1 <= c2.x() || xEnd2 <= c1.x();
+                    boolean ySeparated = yEnd1 <= c2.y() || yEnd2 <= c1.y();
+                    assertThat(xSeparated || ySeparated)
+                            .as("pieces %s and %s overlap on sheet %s", c1.pieceId(), c2.pieceId(), a.stockId())
+                            .isTrue();
+                }
+            }
+        }
+    }
+
+    private void assertWithinSheetBounds(List<StockAssignment> assignments) {
+        for (StockAssignment a : assignments) {
+            for (CutPiece c : a.pieces()) {
+                assertThat(c.x() + c.length())
+                        .as("piece %s exceeds sheet %s length", c.pieceId(), a.stockId())
+                        .isLessThanOrEqualTo(a.length());
+                assertThat(c.y() + c.width())
+                        .as("piece %s exceeds sheet %s width", c.pieceId(), a.stockId())
+                        .isLessThanOrEqualTo(a.width());
             }
         }
     }

@@ -8,7 +8,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.OptionalDouble;
 
-/** The solved result of a 1D cutting-stock problem. */
+/** The solved result of a cutting-stock problem (1D or 2D non-guillotine). */
 public final class CuttingSolution implements Solution {
 
     private final SolveStatus status;
@@ -49,6 +49,17 @@ public final class CuttingSolution implements Solution {
     public long totalWaste() {
         return assignments.stream()
                 .filter(a -> !a.pieces().isEmpty())
+                .mapToLong(StockAssignment::waste)
+                .sum();
+    }
+
+    /**
+     * The total area waste across all used 2D sheets (sum of {@link StockAssignment#waste()}
+     * for sheets with {@code width > 0}). Returns {@code 0} for a 1D model.
+     */
+    public long totalAreaWaste() {
+        return assignments.stream()
+                .filter(a -> !a.pieces().isEmpty() && a.width() > 0)
                 .mapToLong(StockAssignment::waste)
                 .sum();
     }
