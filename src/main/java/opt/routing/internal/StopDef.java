@@ -1,5 +1,7 @@
 package opt.routing.internal;
 
+import java.util.Set;
+
 /**
  * Immutable description of a single stop, used internally by the routing compiler.
  *
@@ -10,6 +12,7 @@ package opt.routing.internal;
  * @param serviceTimeMin  dwell time in minutes the vehicle spends at this stop
  * @param openMin         earliest time-of-day (minutes from midnight) the stop may be served
  * @param closeMin        latest time-of-day (minutes from midnight) the stop may be served
+ * @param requiredSkills  skills a vehicle must have to serve this stop; empty means any vehicle
  */
 public record StopDef(
         String id,
@@ -18,7 +21,8 @@ public record StopDef(
         int demand,
         int serviceTimeMin,
         int openMin,
-        int closeMin
+        int closeMin,
+        Set<String> requiredSkills
 ) {
     /** Returns {@code true} when this stop has a non-default time window that the solver must enforce. */
     public boolean hasTimeWindow() {

@@ -6,6 +6,7 @@ import opt.SolveStatus;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 
 /**
@@ -14,7 +15,12 @@ import java.util.OptionalDouble;
  * Routing relies on first-solution strategies followed by local-search metaheuristics,
  * so the solver does not prove global optimality the way CP-SAT does. {@code FEASIBLE}
  * is the normal outcome; {@code OPTIMAL} is reported only on the rare occasion OR-Tools
- * proves it via {@link com.google.ortools.constraintsolver.RoutingModel#status()}.
+ * proves it. A search that hits its time limit before finding any solution reports
+ * {@code UNKNOWN}; {@code INFEASIBLE} means the search space was exhausted.
+ * <p>
+ * {@link #objective()} depends on the goal: total meters for {@link Goals#totalDistance()},
+ * meters plus fixed costs for {@link Goals#totalCost()}, and the vehicle count for
+ * {@link Goals#vehiclesUsed()}.
  */
 public final class RoutingPlan implements Solution {
 
@@ -28,7 +34,7 @@ public final class RoutingPlan implements Solution {
      * Captures a solved routing result.
      *
      * @param status           solver outcome reported by OR-Tools
-     * @param objective        total route distance (meters), or empty if no solution was found
+     * @param objective        goal-dependent objective value, or empty if no solution was found
      * @param runtime          wall-clock time spent solving
      * @param routes           one {@link Route} per vehicle that was assigned stops (empty vehicles omitted)
      * @param unassignedStops  stop ids the solver dropped or could not serve
@@ -44,7 +50,7 @@ public final class RoutingPlan implements Solution {
 
     /** Reports the solver outcome; {@code FEASIBLE} is the normal case for routing. */
     @Override public SolveStatus status()       { return status; }
-    /** Total distance of all served routes in meters, or empty when no solution was found. */
+    /** Goal-dependent objective (see class javadoc), or empty when no solution was found. */
     @Override public OptionalDouble objective() { return objective; }
     /** Wall-clock time spent solving. */
     @Override public Duration runtime()         { return runtime; }
@@ -57,5 +63,25 @@ public final class RoutingPlan implements Solution {
     /** Stop ids the solver dropped (when dropping is allowed) or could not serve. */
     public List<String> unassignedStops() {
         return unassignedStops;
+    }
+
+    /** The route of the given vehicle; empty when the vehicle is idle or unknown. */
+    public Optional<Route> routeOf(String vehicleId) {
+        return routes.stream().filter(r -> r.vehicle().equals(vehicleId)).findFirst();
+    }
+
+    /** Number of vehicles that serve at least one stop. */
+    public int vehiclesUsed() {
+        return routes.size();
+    }
+
+    /** Sum of {@link Route#distanceMeters()} over all routes. */
+    public long totalDistanceMeters() {
+        return routes.stream().mapToLong(Route::distanceMeters).sum();
+    }
+
+    /** Sum of {@link Route#fixedCost()} over all used vehicles. */
+    public long totalFixedCost() {
+        return routes.stream().mapToLong(Route::fixedCost).sum();
     }
 }

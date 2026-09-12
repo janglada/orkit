@@ -1,5 +1,6 @@
 package opt.routing;
 
+import java.time.LocalTime;
 import java.util.List;
 
 /**
@@ -10,13 +11,31 @@ import java.util.List;
  *                        the vehicle was assigned distinct start/end depots, in which case
  *                        this is the start depot)
  * @param stops           ids of the stops visited, in travel order (depots excluded)
+ * @param visits          one {@link Visit} per entry of {@code stops}, in the same order, with
+ *                        arrival/departure times and the running load
  * @param distanceMeters  total arc cost of this route, in meters
- * @param load            cumulative demand served across all stops in this route
+ * @param load            total declared demand picked up on this route (pair deliveries excluded)
+ * @param fixedCost       the vehicle's fixed cost, charged because the route is non-empty
+ * @param startTime       departure time from the start depot; {@code null} without a time dimension
+ * @param endTime         arrival time at the end depot; {@code null} without a time dimension
  */
 public record Route(
         String vehicle,
         String depotId,
         List<String> stops,
+        List<Visit> visits,
         long distanceMeters,
-        int load
-) {}
+        int load,
+        long fixedCost,
+        LocalTime startTime,
+        LocalTime endTime
+) {
+    /**
+     * Whether times are reported on this route. The time dimension is modeled only when some
+     * time feature is present: a stop window or service time, a vehicle availability window or
+     * route-duration cap, or a travel-time matrix.
+     */
+    public boolean hasTimes() {
+        return startTime != null;
+    }
+}

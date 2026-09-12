@@ -7,23 +7,25 @@ import opt.SolveStatus;
 import opt.internal.NativeLoader;
 import opt.routing.*;
 
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /** Compiles a routing model description into the OR-Tools Routing library and solves it. */
 public final class RoutingCompiler {
 
-    // Depots, in declaration order. Node indices 0..depots.size()-1 are depots.
-    private final List<DepotDef> depots;
+    private static final int DAY_MINUTES = 24 * 60;
+    private static final String CAPACITY_DIM = "Capacity";
+    private static final String TIME_DIM = "Time";
+    private static final String DISTANCE_DIM = "Distance";
 
+    private final RoutingSpec spec;
+    // Convenience aliases into the spec. Node indices 0..depots.size()-1 are depots.
+    private final List<DepotDef> depots;
     private final List<VehicleDef> vehicles;
     private final List<StopDef> stops;
-    private final DistanceSource distanceSource;
-    private final long droppingPenalty;       // <= 0 means dropping not allowed
     private final Strategy firstSolution;
     private final Metaheuristic metaheuristic;
-    private final RoutingGoal goal;
-    private final double travelSpeedKmh;
 
     private long timeLimitMillis = 30_000;
     private boolean verbose = false;
@@ -31,32 +33,17 @@ public final class RoutingCompiler {
     /**
      * Creates a compiler for the given routing model description.
      *
-     * @param depots          depot descriptions; node indices {@code 0..depots.size()-1} are depots
-     *                        in declaration order. The first depot is the default for vehicles
-     *                        that do not specify one.
-     * @param vehicles        vehicle descriptions, one per vehicle
-     * @param stops           stop descriptions, indexed {@code depots.size()..} after the depots
-     * @param distanceSource  how inter-node distances are sourced
-     * @param droppingPenalty  per-stop penalty added when a stop is dropped; {@code <= 0} disables dropping
-     * @param firstSolution   first-solution strategy
-     * @param metaheuristic   local-search metaheuristic
-     * @param goal            minimization objective
-     * @param travelSpeedKmh  average speed used to convert distances to travel times
+     * @param spec           the model as declared through the builder
+     * @param firstSolution  first-solution strategy
+     * @param metaheuristic  local-search metaheuristic
      */
-    public RoutingCompiler(List<DepotDef> depots,
-                           List<VehicleDef> vehicles, List<StopDef> stops,
-                           DistanceSource distanceSource, long droppingPenalty,
-                           Strategy firstSolution, Metaheuristic metaheuristic,
-                           RoutingGoal goal, double travelSpeedKmh) {
-        this.depots = List.copyOf(depots);
-        this.vehicles = List.copyOf(vehicles);
-        this.stops = List.copyOf(stops);
-        this.distanceSource = distanceSource;
-        this.droppingPenalty = droppingPenalty;
+    public RoutingCompiler(RoutingSpec spec, Strategy firstSolution, Metaheuristic metaheuristic) {
+        this.spec = spec;
+        this.depots = spec.depots();
+        this.vehicles = spec.vehicles();
+        this.stops = spec.stops();
         this.firstSolution = firstSolution;
         this.metaheuristic = metaheuristic;
-        this.goal = goal;
-        this.travelSpeedKmh = travelSpeedKmh > 0 ? travelSpeedKmh : 40.0;
     }
 
     /** Sets the wall-clock time budget for the search; default 30 seconds. */
@@ -66,7 +53,12 @@ public final class RoutingCompiler {
         return this;
     }
     /** Enables OR-Tools search log output. */
-    public RoutingCompiler verbose(boolean v)                   { this.verbose = v;                           return this; }
+    public RoutingCompiler verbose(boolean v) { this.verbose = v; return this; }
+
+    /** Everything the search and the extraction need to share about the built model. */
+    private record Model(RoutingIndexManager manager, RoutingModel routing, long[][] distMatrix,
+                         long[] signedDemands, String[] startDepotIdOf, boolean useTime, boolean useCapacity,
+                         Set<String> deliveryStopIds) {}
 
     /**
      * Builds the OR-Tools {@link RoutingModel}, applies capacity, time-window and distance
@@ -120,53 +112,67 @@ public final class RoutingCompiler {
                                long[][] distMatrix, String[] startDepotIdOf) {
         int numDepots   = depots.size();
         int numNodes    = numDepots + stops.size();
+        int numVehicles = vehicles.size();
 
         // ── Transit model — limitation: NOT time-dependent ──────────────────────
         // OR-Tools' native RoutingModel transit callbacks take only (fromNode, toNode)
         // (optionally vehicle) and CANNOT read the cumul/arrival-time variable during
-        // evaluation. The RoutingDimension therefore assumes transit is a function of
-        // (from, to, vehicle) only; time-of-day-dependent travel is not first-class.
-        // Consequence: travelSpeedKmh (used in buildTimeMatrix below) is a single GLOBAL
-        // scalar, not a time-banded profile, so a vehicle is assumed to travel at the
-        // same speed regardless of when it departs.
-        // Future extension point for true time-dependent travel: a CP-SAT routing
-        // solver (the pattern used by every other domain here), where per-arc travel
-        // time can depend on the departure-time IntVar via AddElement / interval logic.
-        // Arc cost evaluator
+        // evaluation. Travel time is therefore a function of (from, to) only; a supplied
+        // time matrix or the global travelSpeedKmh scalar, never a time-banded profile.
         int transitCb = routing.registerTransitCallback((fromIdx, toIdx) -> {
-            int from = (int) manager.indexToNode(fromIdx);
-            int to   = (int) manager.indexToNode(toIdx);
+            int from = manager.indexToNode(fromIdx);
+            int to   = manager.indexToNode(toIdx);
             return distMatrix[from][to];
         });
         routing.setArcCostEvaluatorOfAllVehicles(transitCb);
 
-        // Capacity dimension (only if at least one vehicle has a finite capacity)
-        boolean useCapacity = vehicles.stream().anyMatch(v -> v.capacity() < Integer.MAX_VALUE);
-        if (useCapacity) {
-            long[] demands = new long[numNodes]; // depot demands = 0
-            for (int i = 0; i < stops.size(); i++) {
-                demands[numDepots + i] = stops.get(i).demand();
-            }
-            int demandCb = routing.registerUnaryTransitCallback(idx -> demands[(int) manager.indexToNode(idx)]);
-            long[] capacities = vehicles.stream().mapToLong(v -> v.capacity() == Integer.MAX_VALUE ? Long.MAX_VALUE / 2 : v.capacity()).toArray();
-            routing.addDimensionWithVehicleCapacity(demandCb, 0, capacities, true, "Capacity");
+        // ── Pickup-and-delivery bookkeeping: deliveries carry negative demand ───
+        Map<String, Integer> stopIndexOf = new HashMap<>();
+        for (int i = 0; i < stops.size(); i++) stopIndexOf.put(stops.get(i).id(), i);
+        Set<String> deliveryStopIds = new HashSet<>();
+        long[] signedDemands = new long[numNodes]; // depot demands = 0
+        for (int i = 0; i < stops.size(); i++) signedDemands[numDepots + i] = stops.get(i).demand();
+        for (PickupDeliveryDef pair : spec.pairs()) {
+            int p = stopIndexOf.get(pair.pickupId());
+            int d = stopIndexOf.get(pair.deliveryId());
+            signedDemands[numDepots + d] = -stops.get(p).demand();
+            deliveryStopIds.add(pair.deliveryId());
         }
 
-        // Time window dimension (if any stop has a non-trivial time window or service time)
-        boolean useTime = stops.stream().anyMatch(s -> s.hasTimeWindow() || s.serviceTimeMin() > 0);
+        // ── Fixed costs (always applied when declared; they shape the search) ───
+        long fixedCostBoost = 0;
+        if (spec.goal() instanceof RoutingGoal.MinimizeVehiclesUsed) {
+            long maxArc = 0;
+            for (long[] row : distMatrix) for (long a : row) maxArc = Math.max(maxArc, a);
+            fixedCostBoost = (long) numNodes * maxArc + 1;  // dominates any single tour's distance
+        }
+        for (int v = 0; v < numVehicles; v++) {
+            long fixed = vehicles.get(v).fixedCost() + fixedCostBoost;
+            if (fixed > 0) routing.setFixedCostOfVehicle(fixed, v);
+        }
+
+        // ── Capacity dimension (only if at least one vehicle has a finite capacity) ──
+        boolean useCapacity = vehicles.stream().anyMatch(v -> v.capacity() < Integer.MAX_VALUE);
+        if (useCapacity) {
+            int demandCb = routing.registerUnaryTransitCallback(idx -> signedDemands[manager.indexToNode(idx)]);
+            long[] capacities = vehicles.stream()
+                    .mapToLong(v -> v.capacity() == Integer.MAX_VALUE ? Long.MAX_VALUE / 2 : v.capacity()).toArray();
+            routing.addDimensionWithVehicleCapacity(demandCb, 0, capacities, true, CAPACITY_DIM);
+        }
+
+        // ── Time dimension (any stop window/service, vehicle window/duration cap, or a time matrix) ──
+        boolean useTime = useTime();
         if (useTime) {
-            // Travel speed assumed 40 km/h = 667 m/min; convert distances to minutes
-            long[][] timeMatrix = buildTimeMatrix(distMatrix);
+            long[][] timeMatrix = resolveTimeMatrix(distMatrix);
             int timeCb = routing.registerTransitCallback((fromIdx, toIdx) -> {
-                int from = (int) manager.indexToNode(fromIdx);
-                int to   = (int) manager.indexToNode(toIdx);
+                int from = manager.indexToNode(fromIdx);
+                int to   = manager.indexToNode(toIdx);
                 long service = (from >= numDepots) ? stops.get(from - numDepots).serviceTimeMin() : 0;
                 return timeMatrix[from][to] + service;
             });
-            int maxTime = 24 * 60; // 1440 minutes in a day
-            // Large slack lets vehicles wait at the depot until a time window opens
-            routing.addDimension(timeCb, maxTime, maxTime, false, "Time");
-            RoutingDimension timeDim = routing.getMutableDimension("Time");
+            // Large slack lets vehicles wait at the depot until a time window opens.
+            routing.addDimension(timeCb, DAY_MINUTES, DAY_MINUTES, false, TIME_DIM);
+            RoutingDimension timeDim = routing.getMutableDimension(TIME_DIM);
             for (int i = 0; i < stops.size(); i++) {
                 StopDef stop = stops.get(i);
                 if (stop.hasTimeWindow()) {
@@ -174,25 +180,78 @@ public final class RoutingCompiler {
                     timeDim.cumulVar(nodeIdx).setRange(stop.openMin(), stop.closeMin());
                 }
             }
-        }
-
-        // Per-vehicle max distance — enforced via a dedicated distance dimension
-        boolean useMaxDistance = vehicles.stream().anyMatch(v -> v.maxDistanceMeters() > 0);
-        if (useMaxDistance) {
-            long globalMaxDist = vehicles.stream()
-                    .mapToLong(v -> v.maxDistanceMeters() > 0 ? v.maxDistanceMeters() : Long.MAX_VALUE / 4)
-                    .max().orElse(Long.MAX_VALUE / 4);
-            long[] perVehicleMaxDist = vehicles.stream()
-                    .mapToLong(v -> v.maxDistanceMeters() > 0 ? v.maxDistanceMeters() : globalMaxDist)
-                    .toArray();
-            routing.addDimensionWithVehicleCapacity(transitCb, 0, perVehicleMaxDist, true, "Distance");
-        }
-
-        // Optional stops (disjunctions with dropping penalty)
-        if (droppingPenalty > 0) {
-            for (int i = 0; i < stops.size(); i++) {
-                routing.addDisjunction(new long[]{manager.nodeToIndex(numDepots + i)}, droppingPenalty);
+            for (int v = 0; v < numVehicles; v++) {
+                VehicleDef vd = vehicles.get(v);
+                IntVar startCumul = timeDim.cumulVar(routing.start(v));
+                IntVar endCumul = timeDim.cumulVar(routing.end(v));
+                if (vd.availableFromMin() > 0) startCumul.setMin(vd.availableFromMin());
+                if (vd.availableUntilMin() < DAY_MINUTES) endCumul.setMax(vd.availableUntilMin());
+                if (vd.maxRouteDurationMin() > 0) timeDim.setSpanUpperBoundForVehicle(vd.maxRouteDurationMin(), v);
+                // Tighten start/end cumuls so the reported times are the earliest consistent ones.
+                routing.addVariableMinimizedByFinalizer(startCumul);
+                routing.addVariableMinimizedByFinalizer(endCumul);
             }
+        }
+
+        // ── Distance dimension: per-vehicle max distance, and ordering for pickup/delivery ──
+        boolean useMaxDistance = vehicles.stream().anyMatch(v -> v.maxDistanceMeters() > 0);
+        boolean useDistanceDim = useMaxDistance || !spec.pairs().isEmpty();
+        if (useDistanceDim) {
+            long unbounded = Long.MAX_VALUE / 4;
+            long[] perVehicleMaxDist = vehicles.stream()
+                    .mapToLong(v -> v.maxDistanceMeters() > 0 ? v.maxDistanceMeters() : unbounded)
+                    .toArray();
+            routing.addDimensionWithVehicleCapacity(transitCb, 0, perVehicleMaxDist, true, DISTANCE_DIM);
+        }
+
+        // ── Optional stops (disjunctions with dropping penalty); pairs drop together ──
+        Set<String> pairedStopIds = new HashSet<>();
+        for (PickupDeliveryDef pair : spec.pairs()) {
+            pairedStopIds.add(pair.pickupId());
+            pairedStopIds.add(pair.deliveryId());
+        }
+        if (spec.droppingPenalty() > 0) {
+            for (int i = 0; i < stops.size(); i++) {
+                if (pairedStopIds.contains(stops.get(i).id())) continue;
+                routing.addDisjunction(new long[]{manager.nodeToIndex(numDepots + i)}, spec.droppingPenalty());
+            }
+        }
+
+        // ── Pickup and delivery ─────────────────────────────────────────────────
+        if (!spec.pairs().isEmpty()) {
+            Solver cp = routing.solver();
+            RoutingDimension distDim = routing.getMutableDimension(DISTANCE_DIM);
+            for (PickupDeliveryDef pair : spec.pairs()) {
+                long p = manager.nodeToIndex(numDepots + stopIndexOf.get(pair.pickupId()));
+                long d = manager.nodeToIndex(numDepots + stopIndexOf.get(pair.deliveryId()));
+                routing.addPickupAndDelivery(p, d);
+                cp.addConstraint(cp.makeEquality(routing.vehicleVar(p), routing.vehicleVar(d)));
+                cp.addConstraint(cp.makeLessOrEqual(distDim.cumulVar(p), distDim.cumulVar(d)));
+                if (spec.droppingPenalty() > 0) {
+                    // Penalty is paid per inactive index; both must be active or both inactive.
+                    routing.addDisjunction(new long[]{p, d}, spec.droppingPenalty(), 2);
+                    cp.addConstraint(cp.makeEquality(routing.activeVar(p), routing.activeVar(d)));
+                }
+            }
+            switch (spec.pickupDeliveryPolicy()) {
+                case FIFO -> routing.setPickupAndDeliveryPolicyOfAllVehicles(RoutingModel.PICKUP_AND_DELIVERY_FIFO);
+                case LIFO -> routing.setPickupAndDeliveryPolicyOfAllVehicles(RoutingModel.PICKUP_AND_DELIVERY_LIFO);
+                case ANY -> { }
+            }
+        }
+
+        // ── Vehicle-stop compatibility (skills) ─────────────────────────────────
+        for (int i = 0; i < stops.size(); i++) {
+            StopDef stop = stops.get(i);
+            if (stop.requiredSkills().isEmpty()) continue;
+            int[] allowed = java.util.stream.IntStream.range(0, numVehicles)
+                    .filter(v -> vehicles.get(v).skills().containsAll(stop.requiredSkills()))
+                    .toArray();
+            if (allowed.length == 0) {
+                throw new ModelException("Stop '" + stop.id() + "' requires skills " + stop.requiredSkills()
+                        + " but no vehicle has them.");
+            }
+            routing.setAllowedVehiclesForIndex(allowed, manager.nodeToIndex(numDepots + i));
         }
 
         // Search parameters
@@ -202,52 +261,76 @@ public final class RoutingCompiler {
         Assignment solution = routing.solveWithParameters(params);
         java.time.Duration runtime = java.time.Duration.ofMillis(System.currentTimeMillis() - startMs);
         int routingStatus = routing.status();
+        Model model = new Model(manager, routing, distMatrix, signedDemands, startDepotIdOf,
+                useTime, useCapacity, deliveryStopIds);
         try {
-            return extractPlan(manager, routing, solution, routingStatus, runtime, startDepotIdOf);
+            return extractPlan(model, solution, routingStatus, runtime);
         } finally {
             if (solution != null) solution.delete();  // native SWIG object
         }
     }
 
+    /** Whether any declared feature needs the time dimension. */
+    private boolean useTime() {
+        return stops.stream().anyMatch(s -> s.hasTimeWindow() || s.serviceTimeMin() > 0)
+                || vehicles.stream().anyMatch(VehicleDef::hasTimeSettings)
+                || spec.distanceSource() instanceof DistanceSource.PrecomputedMatrices;
+    }
+
     /** Extracts a pure-Java {@link RoutingPlan} from the native assignment. */
-    private RoutingPlan extractPlan(RoutingIndexManager manager, RoutingModel routing,
-                                    Assignment solution, int routingStatus,
-                                    java.time.Duration runtime, String[] startDepotIdOf) {
+    private RoutingPlan extractPlan(Model m, Assignment solution, int routingStatus, java.time.Duration runtime) {
         int numDepots   = depots.size();
         int numVehicles = vehicles.size();
+        RoutingModel routing = m.routing();
+        RoutingIndexManager manager = m.manager();
 
         if (solution == null) {
             SolveStatus status = mapStatus(routingStatus, false);
-            return new RoutingPlan(status, OptionalDouble.empty(), runtime,
-                    List.of(), List.of());
+            return new RoutingPlan(status, OptionalDouble.empty(), runtime, List.of(), List.of());
         }
 
-        // Extract routes
+        RoutingDimension timeDim = m.useTime() ? routing.getMutableDimension(TIME_DIM) : null;
+
         List<Route> routes = new ArrayList<>();
         Set<String> visitedStops = new HashSet<>();
         long totalDistance = 0;
+        long totalFixed = 0;
 
         for (int v = 0; v < numVehicles; v++) {
             List<String> routeStops = new ArrayList<>();
+            List<Visit> visits = new ArrayList<>();
             long routeDistance = 0;
             int routeLoad = 0;
+            int onBoard = 0;
             long index = routing.start(v);
+            LocalTime startTime = timeDim == null ? null : minutesToTime(solution.min(timeDim.cumulVar(index)));
             while (!routing.isEnd(index)) {
-                int node = (int) manager.indexToNode(index);
+                int node = manager.indexToNode(index);
                 long next = solution.value(routing.nextVar(index));
                 routeDistance += routing.getArcCostForVehicle(index, next, (long) v);
-                index = next;
                 if (node >= numDepots) {
                     StopDef stop = stops.get(node - numDepots);
                     routeStops.add(stop.id());
-                    routeLoad += stop.demand();
                     visitedStops.add(stop.id());
+                    onBoard += (int) m.signedDemands()[node];
+                    if (!m.deliveryStopIds().contains(stop.id())) routeLoad += stop.demand();
+                    LocalTime arrival = null, departure = null;
+                    if (timeDim != null) {
+                        long arrivalMin = solution.min(timeDim.cumulVar(index));
+                        arrival = minutesToTime(arrivalMin);
+                        departure = minutesToTime(arrivalMin + stop.serviceTimeMin());
+                    }
+                    visits.add(new Visit(stop.id(), arrival, departure, onBoard));
                 }
+                index = next;
             }
+            LocalTime endTime = timeDim == null ? null : minutesToTime(solution.min(timeDim.cumulVar(index)));
             totalDistance += routeDistance;
             if (!routeStops.isEmpty()) {
-                routes.add(new Route(vehicles.get(v).id(), startDepotIdOf[v],
-                        routeStops, routeDistance, routeLoad));
+                long fixed = vehicles.get(v).fixedCost();
+                totalFixed += fixed;
+                routes.add(new Route(vehicles.get(v).id(), m.startDepotIdOf()[v],
+                        routeStops, visits, routeDistance, routeLoad, fixed, startTime, endTime));
             }
         }
 
@@ -256,8 +339,18 @@ public final class RoutingCompiler {
                 .filter(id -> !visitedStops.contains(id))
                 .collect(Collectors.toList());
 
+        double objective = switch (spec.goal()) {
+            case RoutingGoal.MinimizeTotalDistance g -> totalDistance;
+            case RoutingGoal.MinimizeTotalCost g     -> totalDistance + totalFixed;
+            case RoutingGoal.MinimizeVehiclesUsed g  -> routes.size();
+        };
         SolveStatus status = mapStatus(routingStatus, true);
-        return new RoutingPlan(status, OptionalDouble.of(totalDistance), runtime, routes, unassigned);
+        return new RoutingPlan(status, OptionalDouble.of(objective), runtime, routes, unassigned);
+    }
+
+    private static LocalTime minutesToTime(long minutes) {
+        // Wraps past midnight rather than throwing, for routes that end after 24:00.
+        return LocalTime.MIDNIGHT.plusMinutes(minutes);
     }
 
     /**
@@ -277,18 +370,17 @@ public final class RoutingCompiler {
         return SolveStatus.UNKNOWN;
     }
 
-    // ── Distance matrix ─────────────────────────────────────────────────────
+    // ── Distance / time matrices ─────────────────────────────────────────────
 
     private long[][] buildDistanceMatrix(int numNodes, int numDepots) {
-        if (distanceSource instanceof DistanceSource.PrecomputedMatrix m) {
-            long[][] mat = m.meters();
-            if (mat.length != numNodes || Arrays.stream(mat).anyMatch(r -> r.length != numNodes)) {
-                throw new ModelException(
-                        "Distance matrix must be " + numNodes + "×" + numNodes
-                                + " (" + numDepots + " depot" + (numDepots == 1 ? "" : "s")
-                                + " + " + stops.size() + " stops)");
-            }
-            return mat;
+        long[][] supplied = switch (spec.distanceSource()) {
+            case DistanceSource.PrecomputedMatrix m   -> m.meters();
+            case DistanceSource.PrecomputedMatrices m -> m.meters();
+            case DistanceSource.Haversine h           -> null;
+        };
+        if (supplied != null) {
+            requireSize(supplied, numNodes, numDepots, "Distance matrix");
+            return supplied;
         }
         // Haversine
         double[] lats = new double[numNodes];
@@ -310,12 +402,30 @@ public final class RoutingCompiler {
         return matrix;
     }
 
+    /** Travel-time matrix in minutes: the supplied one when available, else derived from speed. */
+    private long[][] resolveTimeMatrix(long[][] distMeters) {
+        if (spec.distanceSource() instanceof DistanceSource.PrecomputedMatrices m) {
+            requireSize(m.minutes(), distMeters.length, depots.size(), "Time matrix");
+            return m.minutes();
+        }
+        return buildTimeMatrix(distMeters);
+    }
+
+    private void requireSize(long[][] mat, int numNodes, int numDepots, String name) {
+        if (mat.length != numNodes || Arrays.stream(mat).anyMatch(r -> r.length != numNodes)) {
+            throw new ModelException(
+                    name + " must be " + numNodes + "×" + numNodes
+                            + " (" + numDepots + " depot" + (numDepots == 1 ? "" : "s")
+                            + " + " + stops.size() + " stops)");
+        }
+    }
+
     /** Converts a distance matrix (meters) to a travel-time matrix (minutes) at {@code travelSpeedKmh}. */
     private long[][] buildTimeMatrix(long[][] distMeters) {
         int n = distMeters.length;
         long[][] time = new long[n][n];
-        // metersPerMinute = km/h × 1000 / 60
-        double metersPerMinute = travelSpeedKmh * 1000.0 / 60.0;
+        double speed = spec.travelSpeedKmh() > 0 ? spec.travelSpeedKmh() : 40.0;
+        double metersPerMinute = speed * 1000.0 / 60.0;
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
                 time[i][j] = Math.max(1, Math.round(distMeters[i][j] / metersPerMinute));
@@ -388,7 +498,7 @@ public final class RoutingCompiler {
     private void validate() {
         if (vehicles.isEmpty()) throw new ModelException("At least one vehicle is required.");
         if (stops.isEmpty())    throw new ModelException("At least one stop is required.");
-        if (distanceSource instanceof DistanceSource.Haversine) {
+        if (spec.distanceSource() instanceof DistanceSource.Haversine) {
             for (DepotDef d : depots) {
                 if (d.lat() == 0 && d.lon() == 0) {
                     throw new ModelException("Depot coordinates must be set when using haversine distances.");

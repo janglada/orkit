@@ -1,13 +1,10 @@
 package opt.routing;
 
 import opt.Solver;
-import opt.routing.internal.DepotDef;
 import opt.routing.internal.RoutingCompiler;
-import opt.routing.internal.StopDef;
-import opt.routing.internal.VehicleDef;
+import opt.routing.internal.RoutingSpec;
 
 import java.time.Duration;
-import java.util.List;
 
 /**
  * Routing-specific solver that adds {@link #firstSolution} and {@link #improveWith}
@@ -19,30 +16,15 @@ import java.util.List;
  */
 public final class RoutingSolver implements Solver<RoutingPlan> {
 
-    private final List<DepotDef> depots;
-    private final List<VehicleDef> vehicles;
-    private final List<StopDef> stops;
-    private final DistanceSource distanceSource;
-    private final long droppingPenalty;
-    private final RoutingGoal goal;
-    private final double travelSpeedKmh;
+    private final RoutingSpec spec;
 
     private Duration timeLimit = Duration.ofSeconds(30);
     private boolean verbose = false;
     private Strategy firstSolutionStrategy = Strategy.AUTOMATIC;
     private Metaheuristic metaheuristic = Metaheuristic.AUTOMATIC;
 
-    RoutingSolver(List<DepotDef> depots,
-                  List<VehicleDef> vehicles, List<StopDef> stops,
-                  DistanceSource distanceSource, long droppingPenalty,
-                  RoutingGoal goal, double travelSpeedKmh) {
-        this.depots = depots;
-        this.vehicles = vehicles;
-        this.stops = stops;
-        this.distanceSource = distanceSource;
-        this.droppingPenalty = droppingPenalty;
-        this.goal = goal;
-        this.travelSpeedKmh = travelSpeedKmh;
+    RoutingSolver(RoutingSpec spec) {
+        this.spec = spec;
     }
 
     /** Sets the wall-clock time budget for the search; default 30 seconds. */
@@ -71,9 +53,7 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
     /** Solves the configured routing problem and returns the resulting {@link RoutingPlan}. */
     @Override
     public RoutingPlan solve() {
-        return new RoutingCompiler(
-                depots, vehicles, stops, distanceSource, droppingPenalty,
-                firstSolutionStrategy, metaheuristic, goal, travelSpeedKmh)
+        return new RoutingCompiler(spec, firstSolutionStrategy, metaheuristic)
                 .timeLimit(timeLimit)
                 .verbose(verbose)
                 .solve();

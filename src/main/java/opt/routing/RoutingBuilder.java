@@ -5,11 +5,15 @@ import opt.OptimizationProblem;
 import opt.Solver;
 import opt.internal.Validate;
 import opt.routing.internal.DepotDef;
+import opt.routing.internal.PickupDeliveryDef;
+import opt.routing.internal.RoutingSpec;
 import opt.routing.internal.StopDef;
 import opt.routing.internal.VehicleDef;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -28,6 +32,8 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     private long droppingPenalty            = 0;
     private RoutingGoal goal                = new RoutingGoal.MinimizeTotalDistance();
     private double travelSpeedKmh           = 40.0;
+    private final List<PickupDeliveryDef> pairs = new ArrayList<>();
+    private PickupDeliveryPolicy pdPolicy   = PickupDeliveryPolicy.ANY;
 
     /**
      * Registers a depot location that vehicles may depart from and return to.
@@ -58,7 +64,9 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         cfg.id = id;
         config.accept(cfg);
         vehicles.add(new VehicleDef(id, cfg.capacity, cfg.maxDistanceMeters,
-                cfg.startDepotId, cfg.endDepotId));
+                cfg.startDepotId, cfg.endDepotId,
+                cfg.availableFromMin, cfg.availableUntilMin, cfg.maxRouteDurationMin,
+                cfg.fixedCost, Set.copyOf(cfg.skills)));
         return this;
     }
 
@@ -88,7 +96,28 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         config.accept(cfg);
         if (!cfg.atSet) stopsWithoutCoordinates.add(id);
         stops.add(new StopDef(id, cfg.lat, cfg.lon, cfg.demand,
-                cfg.serviceTimeMin, cfg.openMin, cfg.closeMin));
+                cfg.serviceTimeMin, cfg.openMin, cfg.closeMin, Set.copyOf(cfg.requiredSkills)));
+        return this;
+    }
+
+    /**
+     * Requires {@code pickupStopId} to be visited before {@code deliveryStopId} by the same
+     * vehicle. The pickup stop's {@code demand} is the load carried between the two; the
+     * delivery stop's demand must be omitted or equal to it. When dropping is allowed, the two
+     * stops are dropped together and the penalty is paid per stop. Ids may be declared later;
+     * they are resolved when the problem is built.
+     */
+    public RoutingBuilder pickupAndDelivery(String pickupStopId, String deliveryStopId) {
+        Validate.nonBlank(pickupStopId, "pickup stop id");
+        Validate.nonBlank(deliveryStopId, "delivery stop id");
+        pairs.add(new PickupDeliveryDef(pickupStopId, deliveryStopId));
+        return this;
+    }
+
+    /** Ordering policy among pickup-and-delivery pairs on one vehicle; default {@link PickupDeliveryPolicy#ANY}. */
+    public RoutingBuilder pickupAndDeliveryPolicy(PickupDeliveryPolicy policy) {
+        if (policy == null) throw new ModelException("pickupAndDeliveryPolicy must not be null.");
+        this.pdPolicy = policy;
         return this;
     }
 
@@ -118,8 +147,9 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     }
 
     /**
-     * Average vehicle speed used to convert haversine distances to travel times for time-window
+     * Average vehicle speed used to convert distances to travel times for time-window
      * constraints. Default: 40 km/h. Typical values: urban 20–30, suburban 50, highway 90.
+     * Ignored when {@link DistanceSource#fromMatrices(long[][], long[][])} supplies travel times.
      */
     public RoutingBuilder travelSpeedKmh(double speedKmh) {
         if (speedKmh <= 0) throw new opt.ModelException("travelSpeedKmh must be > 0, got: " + speedKmh);
@@ -140,10 +170,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     @Override
     public RoutingSolver solver() {
         validate();
-        Snap snap = snapshot();
-        return new RoutingSolver(snap.depots(),
-                snap.vehicles(), snap.stops(), snap.distanceSource(),
-                snap.droppingPenalty(), snap.goal(), snap.travelSpeedKmh());
+        return new RoutingSolver(snapshot());
     }
 
     // ── Internals ────────────────────────────────────────────────────────────
@@ -156,34 +183,51 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
             throw new ModelException("Stop '" + stopsWithoutCoordinates.iterator().next()
                     + "' must set coordinates via .at(lat, lon) when using haversine distances.");
         }
+        validatePairs();
     }
 
-    private Snap snapshot() {
-        return new Snap(List.copyOf(depots),
-                List.copyOf(vehicles), List.copyOf(stops),
-                distanceSource, droppingPenalty, goal, travelSpeedKmh);
+    private void validatePairs() {
+        Map<String, StopDef> byId = new HashMap<>();
+        for (StopDef s : stops) byId.put(s.id(), s);
+        Set<String> paired = new LinkedHashSet<>();
+        for (PickupDeliveryDef pair : pairs) {
+            if (pair.pickupId().equals(pair.deliveryId())) {
+                throw new ModelException("pickupAndDelivery: pickup and delivery must be distinct stops, got '"
+                        + pair.pickupId() + "'.");
+            }
+            StopDef pickup = byId.get(pair.pickupId());
+            StopDef delivery = byId.get(pair.deliveryId());
+            if (pickup == null) throw new ModelException("pickupAndDelivery: unknown stop id '" + pair.pickupId() + "'.");
+            if (delivery == null) throw new ModelException("pickupAndDelivery: unknown stop id '" + pair.deliveryId() + "'.");
+            for (String id : List.of(pair.pickupId(), pair.deliveryId())) {
+                if (!paired.add(id)) {
+                    throw new ModelException("Stop '" + id + "' already belongs to a pickup-and-delivery pair.");
+                }
+            }
+            if (delivery.demand() != 0 && delivery.demand() != pickup.demand()) {
+                throw new ModelException("pickupAndDelivery('" + pair.pickupId() + "','" + pair.deliveryId()
+                        + "'): delivery demand " + delivery.demand() + " must equal pickup demand "
+                        + pickup.demand() + " (or be omitted).");
+            }
+        }
     }
 
-    private record Snap(
-            List<DepotDef> depots,
-            List<VehicleDef> vehicles, List<StopDef> stops,
-            DistanceSource distanceSource, long droppingPenalty, RoutingGoal goal,
-            double travelSpeedKmh
-    ) {}
+    private RoutingSpec snapshot() {
+        return new RoutingSpec(depots, vehicles, stops, distanceSource, droppingPenalty, goal,
+                travelSpeedKmh, pairs, pdPolicy);
+    }
 
     private static final class RoutingProblemImpl implements RoutingProblem {
 
-        private final Snap snap;
+        private final RoutingSpec spec;
 
-        RoutingProblemImpl(Snap snap) {
-            this.snap = snap;
+        RoutingProblemImpl(RoutingSpec spec) {
+            this.spec = spec;
         }
 
         @Override
         public RoutingSolver solver() {
-            return new RoutingSolver(snap.depots(),
-                    snap.vehicles(), snap.stops(), snap.distanceSource(),
-                    snap.droppingPenalty(), snap.goal(), snap.travelSpeedKmh());
+            return new RoutingSolver(spec);
         }
     }
 }

@@ -1,9 +1,13 @@
 package opt.routing;
 
 import opt.ModelException;
+import opt.internal.Validate;
 
 import java.time.Duration;
 import java.time.LocalTime;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /** Fluent configurator for a stop, used inside the lambda passed to
  *  {@link RoutingBuilder#stop(String, java.util.function.Consumer)}. */
@@ -19,6 +23,7 @@ public final class StopConfig {
     boolean atSet = false;
     boolean openSet = false;
     boolean closeSet = false;
+    final Set<String> requiredSkills = new LinkedHashSet<>();
 
     StopConfig() {}
 
@@ -30,7 +35,11 @@ public final class StopConfig {
         return this;
     }
 
-    /** Sets the demand picked up or delivered at this stop, in the same units as vehicle capacity. */
+    /**
+     * Sets the demand picked up or delivered at this stop, in the same units as vehicle capacity.
+     * For the delivery stop of a {@link RoutingBuilder#pickupAndDelivery(String, String) pair},
+     * leave it unset (or equal to the pickup's demand); the load is subtracted on delivery.
+     */
     public StopConfig demand(int units) {
         if (units < 0) throw new ModelException("demand must be >= 0, got: " + units);
         this.demand = units;
@@ -58,6 +67,13 @@ public final class StopConfig {
         this.closeMin = time.toSecondOfDay() / 60;
         this.closeSet = true;
         validateWindow();
+        return this;
+    }
+
+    /** Only vehicles having every listed skill (see {@link VehicleConfig#skills(String...)}) may serve this stop. */
+    public StopConfig requires(String... skills) {
+        for (String s : skills) Validate.nonBlank(s, "required skill");
+        this.requiredSkills.addAll(Arrays.asList(skills));
         return this;
     }
 

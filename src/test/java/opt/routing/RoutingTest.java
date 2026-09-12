@@ -1079,4 +1079,319 @@ class RoutingTest {
         assertThat(plan.routes()).extracting(Route::vehicle)
                 .containsExactlyInAnyOrder("vehicle-1", "vehicle-2", "vehicle-3");
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Routing features: visits, vehicle windows, time matrix, fixed cost, skills, P&D
+    // ══════════════════════════════════════════════════════════════════════════
+
+    private static RoutingBuilder bcn() {
+        return Optimize.vehicleRouting().depot("Depot", 41.35, 2.13);
+    }
+
+    // ── T-R41: visits report arrival within the window and departure = arrival + service ──
+
+    @Test
+    void visitsReportArrivalWithinWindow() {
+        RoutingPlan plan = bcn()
+                .vehicle("V", v -> v.capacity(20))
+                .stop("A", s -> s.at(41.39, 2.16).demand(4).openFrom(LocalTime.of(8, 0)).closeAt(LocalTime.of(11, 0))
+                        .serviceTime(Duration.ofMinutes(10)))
+                .stop("B", s -> s.at(41.38, 2.19).demand(3).openFrom(LocalTime.of(9, 0)).closeAt(LocalTime.of(12, 0))
+                        .serviceTime(Duration.ofMinutes(10)))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+        Route r = plan.routeOf("V").orElseThrow();
+        assertThat(r.hasTimes()).isTrue();
+        assertThat(r.visits()).hasSize(2);
+        for (Visit v : r.visits()) {
+            LocalTime open = v.stop().equals("A") ? LocalTime.of(8, 0) : LocalTime.of(9, 0);
+            LocalTime close = v.stop().equals("A") ? LocalTime.of(11, 0) : LocalTime.of(12, 0);
+            assertThat(v.arrival()).isAfterOrEqualTo(open).isBeforeOrEqualTo(close);
+            assertThat(v.departure()).isEqualTo(v.arrival().plusMinutes(10));
+        }
+        assertThat(r.startTime()).isNotNull();
+        assertThat(r.endTime()).isAfter(r.startTime());
+        assertThat(r.visits().get(r.visits().size() - 1).loadAfter()).isEqualTo(7);
+    }
+
+    // ── T-R42: pure CVRP has visits but no times ────────────────────────────
+
+    @Test
+    void visitsHaveNullTimesWithoutTimeFeatures() {
+        RoutingPlan plan = bcn()
+                .vehicle("V", v -> v.capacity(20))
+                .stop("A", s -> s.at(41.39, 2.16).demand(4))
+                .stop("B", s -> s.at(41.38, 2.19).demand(3))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        Route r = plan.routeOf("V").orElseThrow();
+        assertThat(r.hasTimes()).isFalse();
+        assertThat(r.visits()).hasSize(r.stops().size());
+        int prev = 0;
+        for (Visit v : r.visits()) {
+            assertThat(v.arrival()).isNull();
+            assertThat(v.departure()).isNull();
+            assertThat(v.loadAfter()).isGreaterThanOrEqualTo(prev);
+            prev = v.loadAfter();
+        }
+        assertThat(prev).isEqualTo(r.load());
+    }
+
+    // ── T-R43: routeOf is empty for idle and unknown vehicles ───────────────
+
+    @Test
+    void routeOfReturnsEmptyForIdleOrUnknownVehicle() {
+        RoutingPlan plan = bcn()
+                .vehicle("V1", v -> v.capacity(20))
+                .vehicle("V2", v -> v.capacity(20))
+                .stop("A", s -> s.at(41.39, 2.16).demand(4))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.vehiclesUsed()).isEqualTo(1);
+        String used = plan.routes().get(0).vehicle();
+        String idle = used.equals("V1") ? "V2" : "V1";
+        assertThat(plan.routeOf(idle)).isEmpty();
+        assertThat(plan.routeOf("nope")).isEmpty();
+        assertThat(plan.routeOf(used)).isPresent();
+    }
+
+    // ── T-R44: availableFrom delays departure and reports times ─────────────
+
+    @Test
+    void vehicleAvailableFromDelaysDeparture() {
+        RoutingPlan plan = bcn()
+                .vehicle("V", v -> v.capacity(20).availableFrom(LocalTime.of(9, 0)))
+                .stop("A", s -> s.at(41.39, 2.16).demand(4))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        Route r = plan.routeOf("V").orElseThrow();
+        assertThat(r.startTime()).isAfterOrEqualTo(LocalTime.of(9, 0));
+        assertThat(r.visits().get(0).arrival()).isAfter(LocalTime.of(9, 0));
+    }
+
+    // ── T-R45: maxRouteDuration forces a second vehicle, or drops a stop ────
+
+    @Test
+    void maxRouteDurationSplitsOrDropsStops() {
+        long[][] meters  = {{0, 1000, 1000}, {1000, 0, 1000}, {1000, 1000, 0}};
+        long[][] minutes = {{0, 20, 20}, {20, 0, 20}, {20, 20, 0}};
+        RoutingPlan two = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .vehicle("V1", v -> v.maxRouteDuration(Duration.ofMinutes(45)))
+                .vehicle("V2", v -> v.maxRouteDuration(Duration.ofMinutes(45)))
+                .stop("A", s -> s.demand(1))
+                .stop("B", s -> s.demand(1))
+                .distances(DistanceSource.fromMatrices(meters, minutes))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(two.isFeasible()).isTrue();
+        assertThat(two.vehiclesUsed()).isEqualTo(2);
+
+        RoutingPlan one = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .vehicle("V1", v -> v.maxRouteDuration(Duration.ofMinutes(45)))
+                .stop("A", s -> s.demand(1))
+                .stop("B", s -> s.demand(1))
+                .distances(DistanceSource.fromMatrices(meters, minutes))
+                .allowDroppingStops(10_000)
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(one.isFeasible()).isTrue();
+        assertThat(one.unassignedStops()).hasSize(1);
+    }
+
+    // ── T-R46: inverted vehicle window is rejected ──────────────────────────
+
+    @Test
+    void invertedVehicleWindowThrows() {
+        assertThatThrownBy(() -> bcn().vehicle("V", v -> v.availableFrom(LocalTime.of(18, 0)).availableUntil(LocalTime.of(8, 0))))
+                .isInstanceOf(ModelException.class).hasMessageContaining("availableFrom");
+    }
+
+    // ── T-R54: a supplied time matrix overrides the speed-derived one ───────
+
+    @Test
+    void timeMatrixOverridesSpeed() {
+        long[][] meters  = {{0, 100}, {100, 0}};
+        long[][] minutes = {{0, 600}, {600, 0}};
+        RoutingPlan slow = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .vehicle("V", v -> v.capacity(10))
+                .stop("A", s -> s.demand(1).closeAt(LocalTime.of(9, 0)))
+                .distances(DistanceSource.fromMatrices(meters, minutes))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(slow.isFeasible()).as("10 h of travel cannot reach a stop closing at 09:00").isFalse();
+
+        RoutingPlan fast = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .vehicle("V", v -> v.capacity(10))
+                .stop("A", s -> s.demand(1).closeAt(LocalTime.of(9, 0)))
+                .distances(DistanceSource.fromMatrix(meters))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(fast.isFeasible()).isTrue();
+    }
+
+    // ── T-R55: mismatched matrices are rejected ─────────────────────────────
+
+    @Test
+    void mismatchedMatricesThrow() {
+        long[][] m3 = {{0, 1, 1}, {1, 0, 1}, {1, 1, 0}};
+        long[][] m2 = {{0, 1}, {1, 0}};
+        assertThatThrownBy(() -> DistanceSource.fromMatrices(m3, m2))
+                .isInstanceOf(ModelException.class).hasMessageContaining("Time matrix");
+    }
+
+    // ── T-R51: fixed cost consolidates work onto one vehicle under totalCost ──
+
+    @Test
+    void fixedCostConsolidatesOntoOneVehicle() {
+        RoutingPlan plan = bcn()
+                .vehicle("V1", v -> v.capacity(100).fixedCost(1_000_000))
+                .vehicle("V2", v -> v.capacity(100).fixedCost(1_000_000))
+                .stop("A", s -> s.at(41.39, 2.16).demand(1))
+                .stop("B", s -> s.at(41.38, 2.19).demand(1))
+                .stop("C", s -> s.at(41.40, 2.15).demand(1))
+                .stop("D", s -> s.at(41.37, 2.17).demand(1))
+                .goal(Goals.totalCost())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.vehiclesUsed()).isEqualTo(1);
+        Route r = plan.routes().get(0);
+        assertThat(r.fixedCost()).isEqualTo(1_000_000);
+        assertThat(plan.totalFixedCost()).isEqualTo(1_000_000);
+        assertThat(plan.objective()).hasValue((double) (r.distanceMeters() + 1_000_000));
+    }
+
+    // ── T-R52: vehiclesUsed goal minimizes the count and reports it ─────────
+
+    @Test
+    void vehiclesUsedGoalMinimizesCount() {
+        RoutingPlan plan = bcn()
+                .vehicles(3, v -> v.capacity(100))
+                .stop("A", s -> s.at(41.39, 2.16).demand(1))
+                .stop("B", s -> s.at(41.38, 2.19).demand(1))
+                .stop("C", s -> s.at(41.40, 2.15).demand(1))
+                .stop("D", s -> s.at(41.37, 2.17).demand(1))
+                .goal(Goals.vehiclesUsed())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.vehiclesUsed()).isEqualTo(1);
+        assertThat(plan.objective()).hasValue(1.0);
+    }
+
+    // ── T-R53: negative fixed cost is rejected ──────────────────────────────
+
+    @Test
+    void negativeFixedCostThrows() {
+        assertThatThrownBy(() -> bcn().vehicle("V", v -> v.fixedCost(-1)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("fixedCost");
+    }
+
+    // ── T-R56/57: skills route a stop to a capable vehicle, or fail fast ────
+
+    @Test
+    void stopRequiringSkillGoesToSkilledVehicle() {
+        RoutingPlan plan = bcn()
+                .vehicle("Plain", v -> v.capacity(100))
+                .vehicle("Reefer", v -> v.capacity(100).skills("cold"))
+                .stop("Fish", s -> s.at(41.39, 2.16).demand(1).requires("cold"))
+                .stop("Bread", s -> s.at(41.38, 2.19).demand(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.routeOf("Reefer").orElseThrow().stops()).contains("Fish");
+        assertThat(plan.routeOf("Plain").map(Route::stops).orElse(List.of())).doesNotContain("Fish");
+    }
+
+    @Test
+    void noVehicleWithRequiredSkillThrows() {
+        assertThatThrownBy(() -> bcn()
+                .vehicle("Plain", v -> v.capacity(100))
+                .stop("Fish", s -> s.at(41.39, 2.16).demand(1).requires("cold"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve())
+                .isInstanceOf(ModelException.class).hasMessageContaining("cold");
+    }
+
+    // ── T-R47: pickup precedes delivery on the same vehicle ─────────────────
+
+    @Test
+    void pickupPrecedesDeliveryOnSameVehicle() {
+        RoutingPlan plan = bcn()
+                .vehicle("V1", v -> v.capacity(10))
+                .vehicle("V2", v -> v.capacity(10))
+                .stop("P1", s -> s.at(41.39, 2.16).demand(3))
+                .stop("D1", s -> s.at(41.42, 2.20))
+                .stop("P2", s -> s.at(41.36, 2.10).demand(4))
+                .stop("D2", s -> s.at(41.33, 2.05))
+                .pickupAndDelivery("P1", "D1")
+                .pickupAndDelivery("P2", "D2")
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.unassignedStops()).isEmpty();
+        for (String[] pair : new String[][]{{"P1", "D1"}, {"P2", "D2"}}) {
+            Route r = plan.routes().stream().filter(x -> x.stops().contains(pair[0])).findFirst().orElseThrow();
+            assertThat(r.stops()).contains(pair[1]);
+            assertThat(r.stops().indexOf(pair[0])).isLessThan(r.stops().indexOf(pair[1]));
+            // Load goes up at the pickup and back down at the delivery.
+            int atPickup = r.visits().get(r.stops().indexOf(pair[0])).loadAfter();
+            int atDelivery = r.visits().get(r.stops().indexOf(pair[1])).loadAfter();
+            assertThat(atPickup).isGreaterThan(atDelivery);
+        }
+    }
+
+    // ── T-R48: an infeasible pair is dropped together ───────────────────────
+
+    @Test
+    void pairDroppedTogether() {
+        RoutingPlan plan = bcn()
+                .vehicle("V", v -> v.capacity(2))
+                .stop("P", s -> s.at(41.39, 2.16).demand(5))     // exceeds capacity
+                .stop("D", s -> s.at(41.42, 2.20))
+                .stop("X", s -> s.at(41.38, 2.19).demand(1))
+                .pickupAndDelivery("P", "D")
+                .allowDroppingStops(1_000_000)   // far above any arc, so only the impossible pair is dropped
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.unassignedStops()).containsExactlyInAnyOrder("P", "D");
+        assertThat(plan.routeOf("V").orElseThrow().stops()).containsExactly("X");
+    }
+
+    // ── T-R49: pickup-and-delivery validation ───────────────────────────────
+
+    @Test
+    void pickupDeliveryValidation() {
+        assertThatThrownBy(() -> bcn().vehicle("V", v -> {})
+                .stop("P", s -> s.at(41.39, 2.16).demand(1))
+                .pickupAndDelivery("P", "NOPE").solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("NOPE");
+        assertThatThrownBy(() -> bcn().vehicle("V", v -> {})
+                .stop("P", s -> s.at(41.39, 2.16).demand(1))
+                .pickupAndDelivery("P", "P").solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("distinct");
+        assertThatThrownBy(() -> bcn().vehicle("V", v -> {})
+                .stop("P", s -> s.at(41.39, 2.16).demand(1))
+                .stop("D1", s -> s.at(41.40, 2.17))
+                .stop("D2", s -> s.at(41.41, 2.18))
+                .pickupAndDelivery("P", "D1").pickupAndDelivery("P", "D2").solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("already belongs");
+        assertThatThrownBy(() -> bcn().vehicle("V", v -> {})
+                .stop("P", s -> s.at(41.39, 2.16).demand(7))
+                .stop("D", s -> s.at(41.40, 2.17).demand(5))
+                .pickupAndDelivery("P", "D").solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("must equal pickup demand");
+    }
+
+    // ── T-R50: LIFO forbids interleaved pairs on one vehicle ────────────────
+
+    @Test
+    void lifoPolicyNeverInterleavesPairs() {
+        RoutingPlan plan = bcn()
+                .vehicle("V", v -> v.capacity(10))
+                .stop("P1", s -> s.at(41.39, 2.16).demand(1))
+                .stop("D1", s -> s.at(41.42, 2.20))
+                .stop("P2", s -> s.at(41.395, 2.165).demand(1))
+                .stop("D2", s -> s.at(41.425, 2.205))
+                .pickupAndDelivery("P1", "D1")
+                .pickupAndDelivery("P2", "D2")
+                .pickupAndDeliveryPolicy(PickupDeliveryPolicy.LIFO)
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+        List<String> seq = plan.routeOf("V").orElseThrow().stops();
+        int p1 = seq.indexOf("P1"), d1 = seq.indexOf("D1"), p2 = seq.indexOf("P2"), d2 = seq.indexOf("D2");
+        boolean interleaved = (p1 < p2 && p2 < d1 && d1 < d2) || (p2 < p1 && p1 < d2 && d2 < d1);
+        assertThat(interleaved).as("LIFO forbids P1 P2 D1 D2 style interleaving, got %s", seq).isFalse();
+    }
 }

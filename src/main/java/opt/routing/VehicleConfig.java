@@ -3,6 +3,12 @@ package opt.routing;
 import opt.ModelException;
 import opt.internal.Validate;
 
+import java.time.Duration;
+import java.time.LocalTime;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 /** Fluent configurator for a vehicle, used inside the lambda passed to
  *  {@link RoutingBuilder#vehicle(String, java.util.function.Consumer)}. */
 public final class VehicleConfig {
@@ -12,6 +18,13 @@ public final class VehicleConfig {
     long maxDistanceMeters = 0;
     String startDepotId;
     String endDepotId;
+    int availableFromMin = 0;
+    int availableUntilMin = 24 * 60;
+    boolean fromSet = false;
+    boolean untilSet = false;
+    long maxRouteDurationMin = 0;
+    long fixedCost = 0;
+    final Set<String> skills = new LinkedHashSet<>();
 
     VehicleConfig() {}
 
@@ -55,5 +68,61 @@ public final class VehicleConfig {
         Validate.nonBlank(depotId, "endsAt depot id");
         this.endDepotId = depotId;
         return this;
+    }
+
+    /**
+     * Earliest time-of-day the vehicle may leave its start depot; default 00:00. Turns the
+     * time dimension on, so arrival times are then reported on the route.
+     */
+    public VehicleConfig availableFrom(LocalTime time) {
+        if (time == null) throw new ModelException("availableFrom must not be null.");
+        this.availableFromMin = time.toSecondOfDay() / 60;
+        this.fromSet = true;
+        validateWindow();
+        return this;
+    }
+
+    /** Latest time-of-day the vehicle must be back at its end depot; default end of day. */
+    public VehicleConfig availableUntil(LocalTime time) {
+        if (time == null) throw new ModelException("availableUntil must not be null.");
+        this.availableUntilMin = time.toSecondOfDay() / 60;
+        this.untilSet = true;
+        validateWindow();
+        return this;
+    }
+
+    /**
+     * Caps the route duration (end-depot arrival minus start-depot departure), which counts
+     * driving, service, and waiting time.
+     */
+    public VehicleConfig maxRouteDuration(Duration duration) {
+        if (duration == null) throw new ModelException("maxRouteDuration must not be null.");
+        Validate.positive(duration.toMinutes(), "maxRouteDuration minutes");
+        this.maxRouteDurationMin = duration.toMinutes();
+        return this;
+    }
+
+    /**
+     * Cost charged once when this vehicle serves at least one stop; default 0. Same units as
+     * meters, so it is reported in {@link RoutingPlan#objective()} under {@link Goals#totalCost()}.
+     * Idle vehicles pay nothing.
+     */
+    public VehicleConfig fixedCost(long cost) {
+        Validate.nonNegative(cost, "fixedCost");
+        this.fixedCost = cost;
+        return this;
+    }
+
+    /** Capabilities of this vehicle (for example "refrigerated"), matched against {@link StopConfig#requires(String...)}. */
+    public VehicleConfig skills(String... skills) {
+        for (String s : skills) Validate.nonBlank(s, "vehicle skill");
+        this.skills.addAll(Arrays.asList(skills));
+        return this;
+    }
+
+    private void validateWindow() {
+        if (fromSet && untilSet && availableFromMin >= availableUntilMin) {
+            throw new ModelException("Vehicle window is invalid: availableFrom must be strictly before availableUntil");
+        }
     }
 }
