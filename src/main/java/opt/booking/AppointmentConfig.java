@@ -23,6 +23,7 @@ public final class AppointmentConfig {
     LocalDateTime earliestDt;
     LocalDateTime latestDt;
     long penalty = 1L;
+    Duration buffer = Duration.ZERO;
 
     AppointmentConfig() {}
 
@@ -60,6 +61,18 @@ public final class AppointmentConfig {
         return this;
     }
 
+    /**
+     * Turnaround time the resource stays blocked after the appointment (cleanup, travel). It is
+     * not part of the reported {@link AppointmentAssignment#end()} and may spill past the
+     * resource's availability window or the appointment's {@link #latest(LocalDateTime)}, but
+     * never overlaps another appointment on the same resource. Default zero.
+     */
+    public AppointmentConfig buffer(Duration d) {
+        if (d == null || d.isNegative()) throw new ModelException("buffer() must be non-negative, got: " + d);
+        this.buffer = d;
+        return this;
+    }
+
     /** Penalty incurred if this appointment cannot be scheduled. Defaults to {@code 1}. */
     public AppointmentConfig penaltyIfUnscheduled(long p) {
         if (p < 0) {
@@ -74,4 +87,5 @@ public final class AppointmentConfig {
     LocalDateTime earliestDt() { return earliestDt; }
     LocalDateTime latestDt()   { return latestDt; }
     long penalty()             { return penalty; }
+    Duration buffer()          { return buffer; }
 }

@@ -246,15 +246,21 @@ class BookingTest {
                 .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("horizon");
     }
 
-    // ── T-Bk15: Multi-slot resource, malformed TimeSlot ─────────────────────
+    // ── T-Bk15: Multi-slot resource books into the window that fits; malformed TimeSlot ──
 
     @Test
-    void multiSlotResourceThrowsModelException() {
-        assertThatThrownBy(() -> Optimize.booking().horizon(LocalDate.of(2026, 1, 5), 1)
+    void multiSlotResourceBooksIntoSecondSlot() {
+        LocalDate day = LocalDate.of(2026, 1, 5);
+        BookingSolution sol = Optimize.booking().horizon(day, 1)
                 .resource("R", r -> r
-                        .available(new TimeSlot(LocalDateTime.of(2026, 1, 5, 8, 0), LocalDateTime.of(2026, 1, 5, 9, 0)))
-                        .available(new TimeSlot(LocalDateTime.of(2026, 1, 5, 10, 0), LocalDateTime.of(2026, 1, 5, 11, 0))))
-                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("multi-slot");
+                        .available(new TimeSlot(day.atTime(8, 0), day.atTime(9, 0)))
+                        .available(new TimeSlot(day.atTime(10, 0), day.atTime(11, 0))))
+                .appointment("A", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("R")
+                        .earliest(day.atTime(9, 30)))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.isFeasible()).isTrue();
+        assertThat(sol.assignments()).hasSize(1);
+        assertThat(sol.assignments().get(0).start()).isEqualTo(day.atTime(10, 0));
     }
 
     @Test
@@ -356,5 +362,133 @@ class BookingTest {
         // Appointment placed on day 2 => starts on or after 2026-01-06 09:00.
         assertThat(sol.assignments()).hasSize(1);
         assertThat(sol.assignments().get(0).start()).isAfterOrEqualTo(LocalDateTime.of(2026, 1, 6, 9, 0));
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Multi-window availability, weekly templates, buffers, declaration order
+    // ══════════════════════════════════════════════════════════════════════════
+
+    private static final LocalDate MONDAY = LocalDate.of(2026, 1, 5); // a Monday
+
+    // ── T-Bk21: an appointment cannot straddle the gap between two windows ──
+
+    @Test
+    void appointmentCannotSpanSlotGap() {
+        BookingSolution sol = Optimize.booking().horizon(MONDAY, 1)
+                .resource("R", r -> r
+                        .available(new TimeSlot(MONDAY.atTime(8, 0), MONDAY.atTime(9, 0)))
+                        .available(new TimeSlot(MONDAY.atTime(9, 30), MONDAY.atTime(10, 30))))
+                .appointment("A", a -> a.duration(Duration.ofMinutes(90)).requiresAnyOf("R"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.isFeasible()).isTrue();
+        assertThat(sol.unscheduled()).containsExactly("A");
+    }
+
+    // ── T-Bk22: a slot outside the horizon is rejected at build ─────────────
+
+    @Test
+    void slotOutsideHorizonThrows() {
+        assertThatThrownBy(() -> Optimize.booking().horizon(MONDAY, 1)
+                .resource("R", r -> r.available(new TimeSlot(MONDAY.atTime(18, 0), MONDAY.plusDays(1).atTime(2, 0))))
+                .appointment("A", a -> a.duration(Duration.ofMinutes(30)).requiresAnyOf("R"))
+                .solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("outside the horizon");
+    }
+
+    // ── T-Bk23: overlapping windows are merged ──────────────────────────────
+
+    @Test
+    void overlappingSlotsAreMerged() {
+        BookingSolution sol = Optimize.booking().horizon(MONDAY, 1)
+                .resource("R", r -> r
+                        .available(new TimeSlot(MONDAY.atTime(8, 0), MONDAY.atTime(10, 0)))
+                        .available(new TimeSlot(MONDAY.atTime(9, 0), MONDAY.atTime(12, 0))))
+                .appointment("A", a -> a.duration(Duration.ofHours(3)).requiresAnyOf("R"))  // fits only in 08:00-12:00
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.unscheduled()).isEmpty();
+        assertThat(sol.assignments().get(0).start()).isBetween(MONDAY.atTime(8, 0), MONDAY.atTime(9, 0));
+    }
+
+    // ── T-Bk24: weekly template expands over the horizon ────────────────────
+
+    @Test
+    void weeklyTemplateExpandsOverHorizon() {
+        BookingSolution sol = Optimize.booking().horizon(MONDAY, 7)
+                .resource("R", r -> r
+                        .available(java.time.DayOfWeek.MONDAY, java.time.LocalTime.of(9, 0), java.time.LocalTime.of(12, 0))
+                        .available(java.time.DayOfWeek.TUESDAY, java.time.LocalTime.of(9, 0), java.time.LocalTime.of(12, 0)))
+                .appointment("A", a -> a.duration(Duration.ofHours(3)).requiresAnyOf("R"))
+                .appointment("B", a -> a.duration(Duration.ofHours(3)).requiresAnyOf("R"))
+                .appointment("C", a -> a.duration(Duration.ofHours(3)).requiresAnyOf("R"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.isFeasible()).isTrue();
+        assertThat(sol.assignments()).hasSize(2);
+        assertThat(sol.unscheduled()).hasSize(1);
+        assertThat(sol.assignments()).extracting(a -> a.start().toLocalDate())
+                .containsExactlyInAnyOrder(MONDAY, MONDAY.plusDays(1));
+        assertThat(sol.assignments()).allSatisfy(a -> assertThat(a.start().toLocalTime()).isEqualTo(java.time.LocalTime.of(9, 0)));
+    }
+
+    // ── T-Bk25: availableDaily allows any day ───────────────────────────────
+
+    @Test
+    void availableDailyAllowsAnyDay() {
+        BookingSolution sol = Optimize.booking().horizon(MONDAY, 3)
+                .resource("R", r -> r.availableDaily(java.time.LocalTime.of(9, 0), java.time.LocalTime.of(10, 0)))
+                .appointment("A", a -> a.duration(Duration.ofHours(1)).requiresAnyOf("R"))
+                .appointment("B", a -> a.duration(Duration.ofHours(1)).requiresAnyOf("R"))
+                .appointment("C", a -> a.duration(Duration.ofHours(1)).requiresAnyOf("R"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.unscheduled()).isEmpty();
+        assertThat(sol.assignments()).extracting(a -> a.start().toLocalDate())
+                .containsExactlyInAnyOrder(MONDAY, MONDAY.plusDays(1), MONDAY.plusDays(2));
+    }
+
+    // ── T-Bk26: an inverted weekly window is rejected ───────────────────────
+
+    @Test
+    void weeklyWindowInvertedThrows() {
+        assertThatThrownBy(() -> Optimize.booking().horizon(MONDAY, 1)
+                .resource("R", r -> r.availableDaily(java.time.LocalTime.of(18, 0), java.time.LocalTime.of(8, 0))))
+                .isInstanceOf(ModelException.class).hasMessageContaining("strictly before");
+    }
+
+    // ── T-Bk27/28: buffers keep appointments apart but are not reported ─────
+
+    @Test
+    void bufferSeparatesConsecutiveAppointments() {
+        BookingSolution sol = Optimize.booking().horizon(MONDAY, 1)
+                .resource("R", r -> r.available(new TimeSlot(MONDAY.atTime(9, 0), MONDAY.atTime(11, 15))))
+                .appointment("A", a -> a.duration(Duration.ofHours(1)).buffer(Duration.ofMinutes(15)).requiresAnyOf("R"))
+                .appointment("B", a -> a.duration(Duration.ofHours(1)).buffer(Duration.ofMinutes(15)).requiresAnyOf("R"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.unscheduled()).isEmpty();
+        List<AppointmentAssignment> sorted = sol.assignments().stream()
+                .sorted(java.util.Comparator.comparing(AppointmentAssignment::start)).toList();
+        assertThat(sorted.get(0).duration()).isEqualTo(Duration.ofHours(1));
+        assertThat(Duration.between(sorted.get(0).end(), sorted.get(1).start())).isGreaterThanOrEqualTo(Duration.ofMinutes(15));
+    }
+
+    @Test
+    void bufferMayNotOverlapNextAppointment() {
+        BookingSolution sol = Optimize.booking().horizon(MONDAY, 1)
+                .resource("R", r -> r.available(new TimeSlot(MONDAY.atTime(9, 0), MONDAY.atTime(11, 0))))
+                .appointment("A", a -> a.duration(Duration.ofHours(1)).buffer(Duration.ofMinutes(15)).requiresAnyOf("R"))
+                .appointment("B", a -> a.duration(Duration.ofHours(1)).buffer(Duration.ofMinutes(15)).requiresAnyOf("R"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.unscheduled()).hasSize(1);
+    }
+
+    // ── T-Bk29: horizon may be declared after the appointments ──────────────
+
+    @Test
+    void horizonMayBeDeclaredLast() {
+        BookingSolution sol = Optimize.booking()
+                .resource("R", r -> {})
+                .appointment("A", a -> a.duration(Duration.ofMinutes(30)).requiresAnyOf("R").earliest(MONDAY.atTime(10, 0)))
+                .horizon(MONDAY, 1)
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(sol.unscheduled()).isEmpty();
+        assertThat(sol.assignments().get(0).start()).isAfterOrEqualTo(MONDAY.atTime(10, 0));
     }
 }

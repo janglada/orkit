@@ -8,14 +8,17 @@ import java.util.function.Consumer;
 import opt.booking.BookingGoal;
 import opt.booking.BookingSolution;
 import opt.booking.AppointmentAssignment;
-import opt.booking.TimeSlot;
 
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
-/** Compiles a resource-booking model into CP-SAT (optional intervals + per-resource {@code NoOverlap}) and solves it. */
+/**
+ * Compiles a resource-booking model into CP-SAT (optional intervals + per-resource {@code NoOverlap}) and solves it.
+ * Multi-window availability is modeled with one literal per window; a buffer extends the occupied interval
+ * beyond the reported end.
+ */
 public final class CpSatBookingSolver {
 
     private final LocalDate horizonStart;
@@ -76,19 +79,30 @@ public final class CpSatBookingSolver {
 
                 BoolVar pres = model.newBoolVar("x_" + a.id() + "_" + rid);
                 IntVar start = model.newIntVar(startMin, startRangeMax, "s_" + a.id() + "_" + rid);
+                // end = start + duration is what windows and latest() constrain and what is reported;
+                // the resource is occupied for duration + buffer, which may spill past both.
                 IntVar end = model.newIntVar(0, horizonMinutes, "e_" + a.id() + "_" + rid);
-                IntervalVar interval = model.newOptionalIntervalVar(
-                        start, model.newConstant(a.durationMinutes()), end, pres,
-                        "iv_" + a.id() + "_" + rid);
                 model.addEquality(end, LinearExpr.newBuilder().add(start).add(a.durationMinutes()).build());
+                long occupied = a.durationMinutes() + a.bufferMinutes();
+                IntVar occEnd = model.newIntVar(0, horizonMinutes + a.bufferMinutes(), "oe_" + a.id() + "_" + rid);
+                IntervalVar interval = model.newOptionalIntervalVar(
+                        start, model.newConstant(occupied), occEnd, pres,
+                        "iv_" + a.id() + "_" + rid);
 
-                // Availability window: single-slot resources only (multi-slot validated out).
-                if (!r.slots().isEmpty()) {
-                    TimeSlot slot = r.slots().get(0);
-                    long slotStart = Duration.between(epoch, slot.start()).toMinutes();
-                    long slotEnd = Duration.between(epoch, slot.end()).toMinutes();
-                    model.addGreaterOrEqual(start, slotStart).onlyEnforceIf(pres);
-                    model.addLessOrEqual(end, slotEnd).onlyEnforceIf(pres);
+                // Availability windows: the appointment must lie entirely inside one of them.
+                List<SlotWindow> slots = r.slots();
+                if (slots.size() == 1) {
+                    model.addGreaterOrEqual(start, slots.get(0).startMin()).onlyEnforceIf(pres);
+                    model.addLessOrEqual(end, slots.get(0).endMin()).onlyEnforceIf(pres);
+                } else if (slots.size() > 1) {
+                    BoolVar[] inSlot = new BoolVar[slots.size()];
+                    for (int k = 0; k < slots.size(); k++) {
+                        inSlot[k] = model.newBoolVar("slot_" + a.id() + "_" + rid + "_" + k);
+                        model.addGreaterOrEqual(start, slots.get(k).startMin()).onlyEnforceIf(inSlot[k]);
+                        model.addLessOrEqual(end, slots.get(k).endMin()).onlyEnforceIf(inSlot[k]);
+                    }
+                    // Exactly one window when present, none when absent.
+                    model.addEquality(LinearExpr.sum(inSlot), pres);
                 }
 
                 xForA.put(rid, pres);
@@ -207,10 +221,6 @@ public final class CpSatBookingSolver {
         for (ResourceDef r : resources) {
             if (!ridSet.add(r.id())) {
                 throw new ModelException("Duplicate resource id: '" + r.id() + "'.");
-            }
-            if (r.slots().size() > 1) {
-                throw new ModelException("Resource '" + r.id() + "' declares " + r.slots().size()
-                        + " slots; multi-slot resources are not supported yet.");
             }
         }
         Set<String> aidSet = new HashSet<>();
