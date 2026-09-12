@@ -833,4 +833,36 @@ class SchedulingTest {
         assertThat(roster.shiftsFor("NOPE")).isEmpty();
         assertThat(roster.staffOf("NOPE")).isEmpty();
     }
+
+    // ── T-S39: maxHoursPerWeek is a rolling 7-day cap, not a horizon-wide cap ──
+
+    @Test
+    void maxHoursPerWeekIsRollingOverTwoWeekHorizon() {
+        LocalDate start = LocalDate.of(2026, 7, 6);
+        var builder = Optimize.scheduling()
+                .horizon(start, 14)
+                .employee("cheap", e -> e.costPerHour(10).maxHoursPerWeek(24))
+                .employee("expensive", e -> e.costPerHour(100));
+        for (int d = 0; d < 14; d++) {
+            LocalDate date = start.plusDays(d);
+            builder.shift("D" + d, s -> s.on(date).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1));
+        }
+        var roster = builder.goal(totalLaborCost())
+                .solver().timeLimit(Duration.ofSeconds(20)).solve();
+
+        assertThat(roster.isFeasible()).isTrue();
+        List<String> cheapShifts = roster.shiftsFor("cheap");
+        // A horizon-wide 24 h cap would allow only 3 shifts; the rolling cap allows 3 per week = 6.
+        assertThat(cheapShifts).hasSize(6);
+        // And no window of 7 consecutive days holds more than 3 of them.
+        boolean[] worked = new boolean[14];
+        for (var a : roster.assignments()) {
+            if (a.employee().equals("cheap")) worked[(int) (a.date().toEpochDay() - start.toEpochDay())] = true;
+        }
+        for (int w = 0; w + 7 <= 14; w++) {
+            int count = 0;
+            for (int d = w; d < w + 7; d++) if (worked[d]) count++;
+            assertThat(count).as("window starting day %d", w).isLessThanOrEqualTo(3);
+        }
+    }
 }

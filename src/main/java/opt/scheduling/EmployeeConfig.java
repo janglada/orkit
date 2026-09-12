@@ -42,7 +42,7 @@ public final class EmployeeConfig {
         return this;
     }
 
-    /** Caps this employee's total scheduled minutes per calendar week. */
+    /** Caps this employee's scheduled hours in any 7 consecutive days of the horizon (rolling week). */
     public EmployeeConfig maxHoursPerWeek(int hours) {
         if (hours <= 0) throw new ModelException("maxHoursPerWeek must be > 0, got: " + hours);
         this.maxHoursPerWeek = hours;

@@ -23,6 +23,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     private final List<StopDef> stops       = new ArrayList<>();
     private final Set<String> vehicleIds    = new LinkedHashSet<>();
     private final Set<String> stopIds       = new LinkedHashSet<>();
+    private final Set<String> stopsWithoutCoordinates = new LinkedHashSet<>();
     private DistanceSource distanceSource   = DistanceSource.haversine();
     private long droppingPenalty            = 0;
     private RoutingGoal goal                = new RoutingGoal.MinimizeTotalDistance();
@@ -61,10 +62,17 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         return this;
     }
 
-    /** Adds {@code count} identical vehicles configured by the same lambda. */
+    /**
+     * Adds {@code count} identical vehicles configured by the same lambda. Generated ids are
+     * {@code "vehicle-N"} for the smallest N not already taken, so they never collide with
+     * ids declared via {@link #vehicle(String, Consumer)}.
+     */
     public RoutingBuilder vehicles(int count, Consumer<VehicleConfig> config) {
+        int next = 1;
         for (int i = 0; i < count; i++) {
-            vehicle("vehicle-" + (vehicles.size() + 1), config);
+            String id;
+            do { id = "vehicle-" + next++; } while (vehicleIds.contains(id));
+            vehicle(id, config);
         }
         return this;
     }
@@ -78,6 +86,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         StopConfig cfg = new StopConfig();
         cfg.id = id;
         config.accept(cfg);
+        if (!cfg.atSet) stopsWithoutCoordinates.add(id);
         stops.add(new StopDef(id, cfg.lat, cfg.lon, cfg.demand,
                 cfg.serviceTimeMin, cfg.openMin, cfg.closeMin));
         return this;
@@ -143,6 +152,10 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         if (depots.isEmpty())  throw new ModelException("depot(...) must be called.");
         if (vehicles.isEmpty()) throw new ModelException("At least one vehicle is required.");
         if (stops.isEmpty())    throw new ModelException("At least one stop is required.");
+        if (distanceSource instanceof DistanceSource.Haversine && !stopsWithoutCoordinates.isEmpty()) {
+            throw new ModelException("Stop '" + stopsWithoutCoordinates.iterator().next()
+                    + "' must set coordinates via .at(lat, lon) when using haversine distances.");
+        }
     }
 
     private Snap snapshot() {

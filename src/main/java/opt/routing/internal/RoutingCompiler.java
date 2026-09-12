@@ -260,14 +260,20 @@ public final class RoutingCompiler {
         return new RoutingPlan(status, OptionalDouble.of(totalDistance), runtime, routes, unassigned);
     }
 
-    /** Maps the OR-Tools routing status to our {@link SolveStatus}. */
+    /**
+     * Maps the OR-Tools routing status to our {@link SolveStatus}. A search that ran out
+     * of time before finding any solution is {@code UNKNOWN}, not {@code INFEASIBLE}: the
+     * model may well be feasible and the fix is a larger time limit. {@code ROUTING_FAIL}
+     * (search exhausted without a solution) is reported as {@code INFEASIBLE}.
+     */
     private static SolveStatus mapStatus(int routingStatus, boolean hasSolution) {
         if (routingStatus == RoutingModel.ROUTING_OPTIMAL)    return SolveStatus.OPTIMAL;
         if (routingStatus == RoutingModel.ROUTING_INFEASIBLE) return SolveStatus.INFEASIBLE;
+        if (routingStatus == RoutingModel.ROUTING_INVALID)    return SolveStatus.MODEL_INVALID;
         if (hasSolution) return SolveStatus.FEASIBLE;
         // No solution found.
-        if (routingStatus == RoutingModel.ROUTING_FAIL
-                || routingStatus == RoutingModel.ROUTING_FAIL_TIMEOUT) return SolveStatus.INFEASIBLE;
+        if (routingStatus == RoutingModel.ROUTING_FAIL)         return SolveStatus.INFEASIBLE;
+        if (routingStatus == RoutingModel.ROUTING_FAIL_TIMEOUT) return SolveStatus.UNKNOWN;
         return SolveStatus.UNKNOWN;
     }
 

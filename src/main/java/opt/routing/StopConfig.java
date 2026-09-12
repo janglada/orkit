@@ -16,6 +16,7 @@ public final class StopConfig {
     int serviceTimeMin = 0;
     int openMin = 0;
     int closeMin = 24 * 60;
+    boolean atSet = false;
     boolean openSet = false;
     boolean closeSet = false;
 
@@ -25,6 +26,7 @@ public final class StopConfig {
     public StopConfig at(double lat, double lon) {
         this.lat = lat;
         this.lon = lon;
+        this.atSet = true;
         return this;
     }
 

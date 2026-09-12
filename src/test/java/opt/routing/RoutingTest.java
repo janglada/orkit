@@ -1036,4 +1036,47 @@ class RoutingTest {
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
         assertThat(plan.isFeasible()).isTrue();
     }
+
+    // ── T-R38: a stop without .at() is rejected under haversine, accepted with a matrix ──
+
+    @Test
+    void stopWithoutAtUnderHaversineThrows() {
+        assertThatThrownBy(() -> Optimize.vehicleRouting()
+                .depot("D", 41.35, 2.13)
+                .vehicle("V", v -> v.capacity(10))
+                .stop("A", s -> s.demand(1))            // forgot .at(...)
+                .solver())
+                .isInstanceOf(ModelException.class)
+                .hasMessageContaining("'A'").hasMessageContaining(".at(");
+    }
+
+    @Test
+    void stopWithoutAtUnderMatrixIsAccepted() {
+        long[][] m = {{0, 1000}, {1000, 0}};
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("D", 0, 0)
+                .vehicle("V", v -> v.capacity(10))
+                .stop("A", s -> s.demand(1))
+                .distances(DistanceSource.fromMatrix(m))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.objective()).hasValue(2000.0);
+    }
+
+    // ── T-R39: vehicles(n, cfg) never collides with explicitly named vehicles ──
+
+    @Test
+    void vehiclesSkipsTakenGeneratedIds() {
+        RoutingPlan plan = Optimize.vehicleRouting()
+                .depot("D", 41.35, 2.13)
+                .vehicle("vehicle-2", v -> v.capacity(1))
+                .vehicles(2, v -> v.capacity(1))          // must become vehicle-1 and vehicle-3
+                .stop("A", s -> s.at(41.36, 2.14).demand(1))
+                .stop("B", s -> s.at(41.37, 2.15).demand(1))
+                .stop("C", s -> s.at(41.38, 2.16).demand(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(plan.isFeasible()).isTrue();
+        assertThat(plan.routes()).extracting(Route::vehicle)
+                .containsExactlyInAnyOrder("vehicle-1", "vehicle-2", "vehicle-3");
+    }
 }

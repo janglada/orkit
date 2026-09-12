@@ -130,21 +130,8 @@ public final class CpSatSchedulingSolver {
             model.addEquality(expr, shift.needsCount());
         }
 
-        // Max hours per week
-        for (int e = 0; e < E; e++) {
-            EmployeeDef emp = employees.get(e);
-            if (emp.maxHoursPerWeek() > 0) {
-                BoolVar[] vars = new BoolVar[S];
-                long[] durations = new long[S];
-                for (int s = 0; s < S; s++) {
-                    vars[s] = x[e][s];
-                    durations[s] = shifts.get(s).durationMinutes();
-                }
-                model.addLinearConstraint(
-                        buildWeightedSum(vars, durations),
-                        0, (long) emp.maxHoursPerWeek() * 60);
-            }
-        }
+        // Max hours per week: rolling 7-day window (see applyMaxHoursPerWeek)
+        applyMaxHoursPerWeek(model, x, E, S, shiftDayIdx);
 
         // Hard rules
         for (Rule rule : rules) {
@@ -278,6 +265,33 @@ public final class CpSatSchedulingSolver {
     }
 
     // ── Rule implementations ────────────────────────────────────────────────
+
+    /**
+     * Caps each employee's scheduled minutes in every window of 7 consecutive horizon
+     * days at {@code maxHoursPerWeek * 60}. On a horizon of 7 days or fewer this is a
+     * single window over the whole horizon; on longer horizons the cap applies to
+     * every 7-day window, so it cannot be circumvented by front-loading one week.
+     */
+    private void applyMaxHoursPerWeek(CpModel model, BoolVar[][] x, int E, int S, int[] shiftDayIdx) {
+        int windowSize = Math.min(7, horizonDays);
+        if (windowSize <= 0) return;
+        List<List<Integer>> byIndex = new ArrayList<>();
+        for (int d = 0; d < horizonDays; d++) byIndex.add(new ArrayList<>());
+        for (int s = 0; s < S; s++) byIndex.get(shiftDayIdx[s]).add(s);
+
+        for (int e = 0; e < E; e++) {
+            EmployeeDef emp = employees.get(e);
+            if (emp.maxHoursPerWeek() <= 0) continue;
+            long capMinutes = (long) emp.maxHoursPerWeek() * 60;
+            for (int start = 0; start + windowSize <= horizonDays; start++) {
+                LinearExprBuilder window = LinearExpr.newBuilder();
+                for (int d = start; d < start + windowSize; d++) {
+                    for (int s : byIndex.get(d)) window.addTerm(x[e][s], shifts.get(s).durationMinutes());
+                }
+                model.addLinearConstraint(window, 0, capMinutes);
+            }
+        }
+    }
 
     private void applyOneShiftPerDay(CpModel model, BoolVar[][] x, int E, int S, int[] shiftDayIdx) {
         // Group shifts by concrete calendar day-index (0 = horizonStart), not by DayOfWeek.

@@ -53,7 +53,12 @@ public final class OperationConfig {
         return this;
     }
 
-    /** Sets the processing duration of this operation in model time units. */
+    /**
+     * Sets the processing duration of this operation in model time units. The library does
+     * not fix a unit: pick one (minutes, hours, shifts) and use it consistently for
+     * {@code takes}, {@link #releaseAt(long)}, {@link #deadlineAt(long)}, {@link #dueBy(long)},
+     * setup times, and the {@code start}/{@code end} values reported in the schedule.
+     */
     public OperationConfig takes(int durationUnits) {
         if (durationUnits < 1) throw new ModelException("takes() must be >= 1, got: " + durationUnits);
         this.duration = durationUnits;

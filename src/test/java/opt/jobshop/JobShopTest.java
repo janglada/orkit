@@ -793,7 +793,19 @@ class JobShopTest {
     void operationWithNoMachineBeforeThenThrows() {
         assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
                 .job("J1", j -> j.operation().takes(3).then().on("M1").takes(2))
-                .solver().solve()).isInstanceOf(IllegalStateException.class);
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining(".on(");
+    }
+
+    // ── T-J36b: operation() twice without then() is rejected, not silently dropped ──
+
+    @Test
+    void operationCalledTwiceThrowsModelException() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1", "M2")
+                .job("J1", j -> {
+                    j.operation().on("M1").takes(5);
+                    j.operation().on("M2").takes(3);
+                })
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("then()");
     }
 
     // ── T-J37: Operation with no .takes() is rejected at commit ──────────────

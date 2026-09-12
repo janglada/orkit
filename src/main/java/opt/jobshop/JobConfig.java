@@ -17,15 +17,23 @@ public final class JobConfig {
 
     JobConfig() {}
 
-    /** Starts the first (or next) operation in this job. */
+    /**
+     * Starts the first operation of this job. Subsequent operations are added with
+     * {@link OperationConfig#then()}; calling {@code operation()} again while an
+     * operation is still pending is an error rather than a silent replacement.
+     */
     public OperationConfig operation() {
+        if (activeOp != null) {
+            throw new ModelException("operation() was already called for this job; use then() to add the next operation.");
+        }
         activeOp = new OperationConfig(this);
         return activeOp;
     }
 
     void commitOperation(OperationConfig op) {
         if (op.machines() == null || op.machines().isEmpty()) {
-            throw new IllegalStateException("Operation must specify a machine via .on() or .onAnyOf().");
+            throw new ModelException(
+                    "Operation " + committed.size() + " must specify a machine via .on() or .onAnyOf().");
         }
         if (op.duration() < 1) {
             throw new ModelException(
