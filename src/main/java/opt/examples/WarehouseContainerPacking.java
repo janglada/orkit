@@ -12,7 +12,7 @@ import java.time.Duration;
  * Warehouse container loading — pack boxes into the minimum number of containers while
  * respecting 3D non-overlap placement and per-container weight limits.
  *
- * <p>Demonstrates: 3D bin packing, container minimisation, axis-aligned placement with
+ * <p>Demonstrates: 3D bin packing, container minimization, axis-aligned placement with
  * no-overlap constraints, boxes that may be left unassigned when they do not fit.
  *
  * <p>Containers (interior L x W x H, max weight):
@@ -21,7 +21,7 @@ import java.time.Duration;
  *   <li>C2 — 12 x 8 x 6, max weight 30</li>
  * </ul>
  * Each box has a length, width, height, and weight; the solver chooses a container and a
- * placement (x, y, z origin) for every box that fits, minimising the containers used.
+ * placement (x, y, z origin) for every box that fits, minimizing the containers used.
  *
  * Run: mvn exec:java -Dexec.mainClass=opt.examples.WarehouseContainerPacking
  */

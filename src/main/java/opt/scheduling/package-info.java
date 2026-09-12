@@ -1,7 +1,7 @@
 /**
  * Employee shift-scheduling solver.
  *
- * <p>Defines a fluent DSL for modelling weekly or multi-week rosters: employees, shifts
+ * <p>Defines a fluent DSL for modeling weekly or multi-week rosters: employees, shifts
  * (day/evening/night with start/end times), hard constraints ({@link opt.scheduling.Rules})
  * and soft objectives ({@link opt.scheduling.Goals}).
  *

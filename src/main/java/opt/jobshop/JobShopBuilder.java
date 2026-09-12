@@ -117,7 +117,7 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
 
     /**
      * Sets the optimization objective. The default {@link Goals#minimizeMakespan()}
-     * preserves historical behaviour. Use {@link Goals#minimizeTardiness(long)} or
+     * preserves historical behavior. Use {@link Goals#minimizeTardiness(long)} or
      * {@link Goals#minimizeMakespanAndTardiness(long, long)} to penalize soft due
      * dates (set per operation via {@link OperationConfig#dueBy(long)}).
      */

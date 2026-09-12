@@ -14,7 +14,7 @@ public sealed interface DistanceSource
 
     /**
      * User-supplied distance matrix (rows = from-node, cols = to-node, values in meters).
-     * @param meters square matrix of inter-node distances in meters, indexed as depot-first
+     * @param meters square matrix of inter-node distances in meters; depots first (declaration order), then stops
      */
     record PrecomputedMatrix(long[][] meters) implements DistanceSource {}
 
@@ -23,7 +23,10 @@ public sealed interface DistanceSource
         return new Haversine();
     }
 
-    /** Wraps a caller-supplied square distance matrix; row/column 0 is the depot. */
+    /**
+     * Wraps a caller-supplied square distance matrix. Rows/columns {@code 0..d-1} are the
+     * depots in declaration order, followed by the stops in declaration order.
+     */
     static DistanceSource fromMatrix(long[][] metersMatrix) {
         if (metersMatrix == null) {
             throw new ModelException("Distance matrix must not be null.");

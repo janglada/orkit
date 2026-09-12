@@ -1,10 +1,10 @@
 # OR-Tools High-Level DSL
 
-A fluent Java 25 DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.11, covering seven optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, **multiple knapsack**, **container loading (3D bin packing)**, **resource booking (appointment scheduling)**, and **cutting stock**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
+A fluent Java 21 DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.11, covering seven optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, **multiple knapsack**, **container loading (3D bin packing)**, **resource booking (appointment scheduling)**, and **cutting stock**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
 
 ## Requirements
 
-- **Java 51+** and **Maven**.
+- **Java 21+** and **Maven**.
 - OR-Tools native library is pulled automatically per platform. The POM ships the `ortools-linux-x86-64` dependency (runtime scope); `com.google.ortools.Loader` auto-extracts it at startup. macOS arm64 or Windows x86-64 users should swap that artifact for `ortools-darwin-aarch64` or `ortools-win32-x86-64` respectively (same `${ortools.version}`).
 
 ## Build & test

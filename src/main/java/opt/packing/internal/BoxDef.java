@@ -34,7 +34,7 @@ public record BoxDef(
 
     /**
      * Whether this box participates in any of the orientation / stacking sub-features,
-     * i.e. the solver must take the extended modelling path for at least this box.
+     * i.e. the solver must take the extended modeling path for at least this box.
      */
     public boolean hasStackingOrRotationFeatures() {
         return rotatable

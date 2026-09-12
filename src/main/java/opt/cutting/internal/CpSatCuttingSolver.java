@@ -77,7 +77,7 @@ public final class CpSatCuttingSolver {
         return any2D ? solve2D() : solve1D();
     }
 
-    // ── 1D path (unchanged behaviour) ─────────────────────────────────────────
+    // ── 1D path (unchanged behavior) ─────────────────────────────────────────
 
     private CuttingSolution solve1D() {
         int P = pieces.size();

@@ -1,7 +1,7 @@
 package opt;
 
 /**
- * Thrown when a model is built inconsistently or violates a modelling rule
+ * Thrown when a model is built inconsistently or violates a modeling rule
  * (duplicate ids, missing required fields, conflicting options, etc.).
  */
 public class ModelException extends RuntimeException {

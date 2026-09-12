@@ -37,8 +37,8 @@ import java.util.*;
  * <p>Objectives:
  * <ul>
  *   <li>{@link PackingGoal.MinimizeContainersUsed} — classic bin packing: every box that
- *       fits somewhere must be packed, and the number of non-empty containers is minimised.</li>
- *   <li>{@link PackingGoal.MaximizeVolumeUtilization} — maximise the total packed box
+ *       fits somewhere must be packed, and the number of non-empty containers is minimized.</li>
+ *   <li>{@link PackingGoal.MaximizeVolumeUtilization} — maximize the total packed box
  *       volume (boxes may be left out when space or weight is tight).</li>
  * </ul>
  */
@@ -91,7 +91,7 @@ public final class CpSatPackingSolver {
         // When NONE of the opt-in features are used, the model built below is
         // structurally identical to the original fixed-orientation, floating packing
         // model (same variables, same constraints, same creation order), so the
-        // existing T-Pk1..T-Pk20 behaviour is preserved exactly.
+        // existing T-Pk1..T-Pk20 behavior is preserved exactly.
         boolean anyRotatable = false;
         boolean anyPrecedence = false;
         boolean anyWeightBearing = false;
@@ -253,7 +253,7 @@ public final class CpSatPackingSolver {
         }
 
         // For MinimizeContainersUsed this is classic bin packing: every box that fits
-        // somewhere must be packed (otherwise minimising containers trivially packs
+        // somewhere must be packed (otherwise minimizing containers trivially packs
         // nothing). For MaximizeVolumeUtilization the volume reward already drives
         // packing, so the at-most-one bound above suffices.
         if (goal instanceof PackingGoal.MinimizeContainersUsed) {

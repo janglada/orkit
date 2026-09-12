@@ -1,7 +1,7 @@
 /**
  * Vehicle routing solver.
  *
- * <p>Offers a fluent DSL for modelling vehicle routing problems (VRP): one or more
+ * <p>Offers a fluent DSL for modeling vehicle routing problems (VRP): one or more
  * depots, vehicles with capacities, stops with demands and time windows, pluggable
  * distance sources, first-solution heuristics and local-search metaheuristics.
  *

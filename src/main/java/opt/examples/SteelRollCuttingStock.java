@@ -10,7 +10,7 @@ import java.time.Duration;
 
 /**
  * Steel roll cutting-stock — cut demanded piece lengths from steel rolls of three
- * available cross-sections (6 m, 8 m, 10 m), minimising total trim waste.
+ * available cross-sections (6 m, 8 m, 10 m), minimizing total trim waste.
  *
  * <p>Demonstrates: 1D cutting stock, per-roll NoOverlap, required pieces, quantity
  * expansion for both stock and pieces, and the {@link Goals#minimizeWaste()} objective.
