@@ -1,8 +1,8 @@
 package opt;
 
-import com.google.ortools.Loader;
 import opt.booking.BookingBuilder;
 import opt.cutting.CuttingBuilder;
+import opt.internal.NativeLoader;
 import opt.jobshop.JobShopBuilder;
 import opt.knapsack.MultipleKnapsackBuilder;
 import opt.packing.PackingBuilder;
@@ -18,7 +18,7 @@ import opt.scheduling.SchedulingBuilder;
 public final class Optimize {
 
     static {
-        Loader.loadNativeLibraries();
+        NativeLoader.ensureLoaded();
     }
 
     /** Creates a builder for employee shift scheduling problems. */

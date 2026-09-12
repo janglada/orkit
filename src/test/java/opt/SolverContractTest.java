@@ -3,6 +3,9 @@ package opt;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -105,5 +108,99 @@ class SolverContractTest {
                 .solver().solve();
         assertThat(sol.isFeasible()).isTrue();
         assertThat(sol.makespan()).isEqualTo(3);
+    }
+
+    // ── CpSatSolver: onSolution / warmStart / cancel / workers ───────────────
+
+    private static CpSatProblem<opt.jobshop.JobShopSchedule> hardJobShop(int jobs, int machines, long seed) {
+        Random rnd = new Random(seed);
+        String[] m = new String[machines];
+        for (int i = 0; i < machines; i++) m[i] = "M" + i;
+        var b = Optimize.jobShop().machines(m);
+        for (int j = 0; j < jobs; j++) {
+            List<Integer> order = new ArrayList<>();
+            for (int i = 0; i < machines; i++) order.add(i);
+            java.util.Collections.shuffle(order, rnd);
+            int[] durations = new int[machines];
+            for (int i = 0; i < machines; i++) durations[i] = 1 + rnd.nextInt(20);
+            b.job("J" + j, jc -> {
+                var op = jc.operation().on(m[order.get(0)]).takes(durations[0]);
+                for (int i = 1; i < machines; i++) op = op.then().on(m[order.get(i)]).takes(durations[i]);
+            });
+        }
+        return b.build();
+    }
+
+    @Test
+    void onSolutionReceivesFeasibleIntermediateSolutions() {
+        List<opt.jobshop.JobShopSchedule> seen = new ArrayList<>();
+        var result = hardJobShop(6, 4, 1).solver()
+                .timeLimit(Duration.ofSeconds(10)).workers(1)
+                .onSolution(seen::add)
+                .solve();
+        assertThat(result.isFeasible()).isTrue();
+        assertThat(seen).isNotEmpty();
+        for (var s : seen) {
+            assertThat(s.status()).isEqualTo(SolveStatus.FEASIBLE);
+            assertThat(s.objective()).isPresent();
+            assertThat(s.operations()).hasSize(24);
+        }
+        // Intermediate solutions never beat the final one.
+        for (var s : seen) assertThat(s.makespan()).isGreaterThanOrEqualTo(result.makespan());
+    }
+
+    @Test
+    void warmStartWithPreviousSolutionStillOptimal() {
+        var problem = hardJobShop(4, 3, 2);
+        var first = problem.solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(first.isOptimal()).isTrue();
+        var second = problem.solver().timeLimit(Duration.ofSeconds(10)).warmStart(first).solve();
+        assertThat(second.isOptimal()).isTrue();
+        assertThat(second.makespan()).isEqualTo(first.makespan());
+    }
+
+    @Test
+    void warmStartRejectsNullAndInfeasible() {
+        var problem = hardJobShop(2, 2, 3);
+        assertThatThrownBy(() -> problem.solver().warmStart(null))
+                .isInstanceOf(ModelException.class).hasMessageContaining("warmStart");
+        var infeasible = Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(10).deadlineAt(10))
+                .job("J2", j -> j.operation().on("M1").takes(10).deadlineAt(10))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(infeasible.isFeasible()).isFalse();
+        assertThatThrownBy(() -> problem.solver().warmStart(infeasible))
+                .isInstanceOf(ModelException.class).hasMessageContaining("feasible");
+    }
+
+    @Test
+    void cancelFromListenerStopsEarly() {
+        CpSatSolver<opt.jobshop.JobShopSchedule> solver = hardJobShop(12, 8, 4).solver()
+                .timeLimit(Duration.ofSeconds(60)).workers(2);
+        var result = solver.onSolution(s -> solver.cancel()).solve();
+        assertThat(result.isFeasible()).isTrue();
+        assertThat(result.runtime().toSeconds()).isLessThan(30);
+    }
+
+    @Test
+    void listenerExceptionIsWrappedAndStopsSearch() {
+        var solver = hardJobShop(6, 4, 5).solver().timeLimit(Duration.ofSeconds(60));
+        assertThatThrownBy(() -> solver.onSolution(s -> { throw new IllegalStateException("boom"); }).solve())
+                .isInstanceOf(ModelException.class)
+                .hasMessageContaining("onSolution")
+                .hasCauseInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void workersBelowOneThrows() {
+        assertThatThrownBy(() -> hardJobShop(2, 2, 6).solver().workers(0))
+                .isInstanceOf(ModelException.class).hasMessageContaining("workers");
+    }
+
+    @Test
+    void routingSolverHasNoWorkersOrSeed() throws Exception {
+        for (var m : opt.routing.RoutingSolver.class.getMethods()) {
+            assertThat(m.getName()).as("routing must not accept a knob OR-Tools ignores").isNotIn("workers", "seed");
+        }
     }
 }

@@ -3,6 +3,8 @@ package opt.booking.internal;
 import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
+import opt.internal.CpSatParams;
+import java.util.function.Consumer;
 import opt.booking.BookingGoal;
 import opt.booking.BookingSolution;
 import opt.booking.AppointmentAssignment;
@@ -21,34 +23,25 @@ public final class CpSatBookingSolver {
     private final BookingGoal goal;
     private final List<ResourceDef> resources;
     private final List<AppointmentDef> appointments;
+    private final CpSatParams params;
+    private final Consumer<BookingSolution> listener;
+    private final BookingSolution warmStart;
 
-    private double timeLimitSeconds = 60;
-    private int workers = 1;
-    private long seed = 0;
-    private boolean verbose = false;
 
     /** Creates a solver for the given resources and appointments. Internal; obtain via {@link opt.booking.BookingBuilder#solver()}. */
     public CpSatBookingSolver(LocalDate horizonStart, int horizonDays, BookingGoal goal,
-                              List<ResourceDef> resources, List<AppointmentDef> appointments) {
+                              List<ResourceDef> resources, List<AppointmentDef> appointments,
+                              CpSatParams params, Consumer<BookingSolution> listener, BookingSolution warmStart) {
         this.horizonStart = horizonStart;
         this.horizonDays = horizonDays;
         this.goal = goal;
         this.resources = List.copyOf(resources);
         this.appointments = List.copyOf(appointments);
+        this.params = (params == null) ? new CpSatParams() : params;
+        this.listener = listener;
+        this.warmStart = warmStart;
     }
 
-    /** Sets the maximum time the CP-SAT solver may run. */
-    public CpSatBookingSolver timeLimit(Duration limit) {
-        if (limit == null) throw new ModelException("timeLimit must not be null.");
-        this.timeLimitSeconds = limit.toMillis() / 1000.0;
-        return this;
-    }
-    /** Sets the number of parallel search workers. */
-    public CpSatBookingSolver workers(int n)            { this.workers = n;                            return this; }
-    /** Sets the random seed for the CP-SAT search. */
-    public CpSatBookingSolver seed(long s)              { this.seed = s;                               return this; }
-    /** Enables or disables CP-SAT search-progress logging. */
-    public CpSatBookingSolver verbose(boolean v)        { this.verbose = v;                            return this; }
 
     /** Builds the CP-SAT model (optional intervals, per-resource {@code NoOverlap}, one-resource-per-appointment)
      *  and returns the solved {@link BookingSolution}. */
@@ -151,46 +144,52 @@ public final class CpSatBookingSolver {
             throw new ModelException("Unknown goal: " + goal);
         }
 
-        // Solve.
-        CpSolver solver = new CpSolver();
-        solver.getParameters().setMaxTimeInSeconds(timeLimitSeconds);
-        solver.getParameters().setNumWorkers(workers);
-        solver.getParameters().setRandomSeed((int) seed);
-        solver.getParameters().setLogSearchProgress(verbose);
+        if (warmStart != null) applyWarmStart(model, x, s);
 
-        long startMs = System.currentTimeMillis();
-        CpSolverStatus cpStatus = solver.solve(model);
-        Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
+        CpSatParams.Extractor<BookingSolution> extract = (v, status, runtime) -> {
 
-        SolveStatus status = SolveStatus.mapStatus(cpStatus);
-
-        List<AppointmentAssignment> assignments = new ArrayList<>();
-        List<String> unscheduled = new ArrayList<>();
-        if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
-            for (AppointmentDef a : appointments) {
-                String assignedResource = null;
-                long startVal = 0;
-                for (String rid : a.resourceIds()) {
-                    if (solver.booleanValue(x.get(a.id()).get(rid))) {
-                        assignedResource = rid;
-                        startVal = solver.value(s.get(a.id()).get(rid));
-                        break;
+            List<AppointmentAssignment> assignments = new ArrayList<>();
+            List<String> unscheduled = new ArrayList<>();
+            if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
+                for (AppointmentDef a : appointments) {
+                    String assignedResource = null;
+                    long startVal = 0;
+                    for (String rid : a.resourceIds()) {
+                        if (v.booleanValue(x.get(a.id()).get(rid))) {
+                            assignedResource = rid;
+                            startVal = v.value(s.get(a.id()).get(rid));
+                            break;
+                        }
+                    }
+                    if (assignedResource != null) {
+                        assignments.add(new AppointmentAssignment(a.id(), assignedResource,
+                                startVal, startVal + a.durationMinutes()));
+                    } else {
+                        unscheduled.add(a.id());
                     }
                 }
-                if (assignedResource != null) {
-                    assignments.add(new AppointmentAssignment(a.id(), assignedResource,
-                            startVal, startVal + a.durationMinutes()));
-                } else {
-                    unscheduled.add(a.id());
-                }
+            }
+
+            OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
+                    ? OptionalDouble.of(v.objectiveValue())
+                    : OptionalDouble.empty();
+
+            return new BookingSolution(status, objValue, runtime, assignments, unscheduled);
+        };
+        return params.solve(model, extract, listener);
+    }
+
+    /** Hints resource choice and start for every appointment present in a previous solution. */
+    private void applyWarmStart(CpModel model, Map<String, Map<String, BoolVar>> x, Map<String, Map<String, IntVar>> s) {
+        for (AppointmentAssignment prev : warmStart.assignments()) {
+            Map<String, BoolVar> xForA = x.get(prev.appointmentId());
+            if (xForA == null) continue;
+            for (var e : xForA.entrySet()) {
+                boolean chosen = e.getKey().equals(prev.resourceId());
+                model.addHint(e.getValue(), chosen ? 1 : 0);
+                if (chosen) model.addHint(s.get(prev.appointmentId()).get(e.getKey()), prev.startMinute());
             }
         }
-
-        OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
-                ? OptionalDouble.of(solver.objectiveValue())
-                : OptionalDouble.empty();
-
-        return new BookingSolution(status, objValue, runtime, assignments, unscheduled);
     }
 
     private void validate() {

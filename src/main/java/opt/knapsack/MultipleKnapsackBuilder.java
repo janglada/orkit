@@ -1,14 +1,14 @@
 package opt.knapsack;
 
 import opt.ModelException;
-import opt.OptimizationProblem;
-import opt.Solver;
+import opt.CpSatProblem;
+import opt.CpSatSolver;
+import opt.internal.AbstractCpSatSolver;
 import opt.internal.Validate;
 import opt.knapsack.internal.BinDef;
 import opt.knapsack.internal.CpSatMultipleKnapsackSolver;
 import opt.knapsack.internal.ItemDef;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /** Fluent builder for multiple-knapsack problems. Entry point: {@code Optimize.multipleKnapsack()}. */
-public final class MultipleKnapsackBuilder implements OptimizationProblem<MultipleKnapsackSolution> {
+public final class MultipleKnapsackBuilder implements CpSatProblem<MultipleKnapsackSolution> {
 
     private final List<ItemDef> items = new ArrayList<>();
     private final List<BinDef> bins = new ArrayList<>();
@@ -65,19 +65,19 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
     }
 
     /** Builds an immutable, reusable problem instance. */
-    public OptimizationProblem<MultipleKnapsackSolution> build() {
+    public CpSatProblem<MultipleKnapsackSolution> build() {
         return new MultipleKnapsackProblem(List.copyOf(items), List.copyOf(bins), goal);
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
     @Override
-    public Solver<MultipleKnapsackSolution> solver() {
+    public CpSatSolver<MultipleKnapsackSolution> solver() {
         return build().solver();
     }
 
     // ── Problem + Solver ────────────────────────────────────────────────────
 
-    private static final class MultipleKnapsackProblem implements OptimizationProblem<MultipleKnapsackSolution> {
+    private static final class MultipleKnapsackProblem implements CpSatProblem<MultipleKnapsackSolution> {
 
         private final List<ItemDef> items;
         private final List<BinDef> bins;
@@ -90,20 +90,16 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
         }
 
         @Override
-        public Solver<MultipleKnapsackSolution> solver() {
+        public CpSatSolver<MultipleKnapsackSolution> solver() {
             return new MultipleKnapsackSolver(items, bins, goal);
         }
     }
 
-    private static final class MultipleKnapsackSolver implements Solver<MultipleKnapsackSolution> {
+    private static final class MultipleKnapsackSolver extends AbstractCpSatSolver<MultipleKnapsackSolution> {
 
         private final List<ItemDef> items;
         private final List<BinDef> bins;
         private final KnapsackGoal goal;
-        private Duration timeLimit = Duration.ofMinutes(1);
-        private int workers = 1;
-        private long seed = 0;
-        private boolean verbose = false;
 
         MultipleKnapsackSolver(List<ItemDef> items, List<BinDef> bins, KnapsackGoal goal) {
             this.items = items;
@@ -111,19 +107,9 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
             this.goal = goal;
         }
 
-        @Override public Solver<MultipleKnapsackSolution> timeLimit(Duration limit) { timeLimit = limit; return this; }
-        @Override public Solver<MultipleKnapsackSolution> workers(int threads)       { workers = threads;  return this; }
-        @Override public Solver<MultipleKnapsackSolution> seed(long randomSeed)      { seed = randomSeed;  return this; }
-        @Override public Solver<MultipleKnapsackSolution> verbose(boolean log)       { verbose = log;      return this; }
-
         @Override
         public MultipleKnapsackSolution solve() {
-            return new CpSatMultipleKnapsackSolver(items, bins, goal)
-                    .timeLimit(timeLimit)
-                    .workers(workers)
-                    .seed(seed)
-                    .verbose(verbose)
-                    .solve();
+            return new CpSatMultipleKnapsackSolver(items, bins, goal, params, listener, warmStart).solve();
         }
     }
 }

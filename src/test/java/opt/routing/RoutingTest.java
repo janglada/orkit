@@ -465,7 +465,7 @@ class RoutingTest {
                 .build();
 
         RoutingPlan r1 = problem.solver().timeLimit(Duration.ofSeconds(5)).solve();
-        RoutingPlan r2 = problem.solver().timeLimit(Duration.ofSeconds(5)).seed(42).solve();
+        RoutingPlan r2 = problem.solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(r1.isFeasible()).isTrue();
         assertThat(r2.isFeasible()).isTrue();

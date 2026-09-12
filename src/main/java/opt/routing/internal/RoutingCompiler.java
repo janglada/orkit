@@ -4,6 +4,7 @@ import com.google.ortools.constraintsolver.*;
 import com.google.protobuf.Duration;
 import opt.ModelException;
 import opt.SolveStatus;
+import opt.internal.NativeLoader;
 import opt.routing.*;
 
 import java.util.*;
@@ -25,8 +26,6 @@ public final class RoutingCompiler {
     private final double travelSpeedKmh;
 
     private long timeLimitMillis = 30_000;
-    private int workers = 1;
-    private long seed = 0;
     private boolean verbose = false;
 
     /**
@@ -66,10 +65,6 @@ public final class RoutingCompiler {
         this.timeLimitMillis = limit.toMillis();
         return this;
     }
-    /** Sets the number of parallel search workers; default 1. */
-    public RoutingCompiler workers(int n)                       { this.workers = n;                           return this; }
-    /** Seeds the randomized local-search component for reproducibility. */
-    public RoutingCompiler seed(long s)                         { this.seed = s;                              return this; }
     /** Enables OR-Tools search log output. */
     public RoutingCompiler verbose(boolean v)                   { this.verbose = v;                           return this; }
 
@@ -78,6 +73,7 @@ public final class RoutingCompiler {
      * dimensions, runs the search, and extracts the resulting {@link RoutingPlan}.
      */
     public RoutingPlan solve() {
+        NativeLoader.ensureLoaded();
         validate();
 
         // nodes 0..numDepots-1 = depots (declaration order); numDepots..numDepots+stops-1 = stops

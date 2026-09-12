@@ -1,6 +1,5 @@
 package opt.examples;
 
-import com.google.ortools.Loader;
 import opt.packing.ContainerAssignment;
 import opt.packing.Goals;
 import opt.packing.PackingBuilder;
@@ -37,7 +36,6 @@ public class WarehouseContainerPacking {
         System.out.println("╔═════════════════════════════════════════════╗");
         System.out.println("║  Warehouse Container Loading — 3D Bin Pack  ║");
         System.out.println("╚═════════════════════════════════════════════╝");
-        Loader.loadNativeLibraries();
 
         PackingSolution solution = new PackingBuilder()
                 .goal(Goals.minimizeContainersUsed())

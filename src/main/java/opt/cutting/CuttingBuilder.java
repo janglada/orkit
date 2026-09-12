@@ -1,15 +1,14 @@
 package opt.cutting;
 
-import com.google.ortools.Loader;
 import opt.ModelException;
-import opt.OptimizationProblem;
-import opt.Solver;
+import opt.CpSatProblem;
+import opt.CpSatSolver;
+import opt.internal.AbstractCpSatSolver;
 import opt.cutting.internal.CpSatCuttingSolver;
 import opt.cutting.internal.PieceDef;
 import opt.cutting.internal.StockDef;
 import opt.internal.Validate;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -17,11 +16,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /** Fluent builder for cutting-stock problems (1D or 2D non-guillotine). Entry point: {@code Optimize.cuttingStock()}. */
-public final class CuttingBuilder implements OptimizationProblem<CuttingSolution> {
-
-    static {
-        Loader.loadNativeLibraries();
-    }
+public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
 
     private final List<StockConfig> rawStocks = new ArrayList<>();
     private final List<PieceConfig> rawPieces = new ArrayList<>();
@@ -79,7 +74,7 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
     }
 
     /** Builds an immutable, reusable problem instance with quantity expansion applied. */
-    public OptimizationProblem<CuttingSolution> build() {
+    public CpSatProblem<CuttingSolution> build() {
         if (rawStocks.isEmpty()) {
             throw new ModelException("At least one stock roll is required.");
         }
@@ -110,13 +105,13 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
     @Override
-    public Solver<CuttingSolution> solver() {
+    public CpSatSolver<CuttingSolution> solver() {
         return build().solver();
     }
 
     // ── Problem + Solver ────────────────────────────────────────────────────
 
-    private static final class CuttingProblem implements OptimizationProblem<CuttingSolution> {
+    private static final class CuttingProblem implements CpSatProblem<CuttingSolution> {
 
         private final List<StockDef> stocks;
         private final List<PieceDef> pieces;
@@ -131,21 +126,17 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
         }
 
         @Override
-        public Solver<CuttingSolution> solver() {
+        public CpSatSolver<CuttingSolution> solver() {
             return new CuttingSolver(stocks, pieces, goal, droppingPenalty);
         }
     }
 
-    private static final class CuttingSolver implements Solver<CuttingSolution> {
+    private static final class CuttingSolver extends AbstractCpSatSolver<CuttingSolution> {
 
         private final List<StockDef> stocks;
         private final List<PieceDef> pieces;
         private final CuttingGoal goal;
         private final long droppingPenalty;
-        private Duration timeLimit = Duration.ofMinutes(1);
-        private int workers = 1;
-        private long seed = 0;
-        private boolean verbose = false;
 
         CuttingSolver(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal, long droppingPenalty) {
             this.stocks = stocks;
@@ -154,19 +145,9 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
             this.droppingPenalty = droppingPenalty;
         }
 
-        @Override public Solver<CuttingSolution> timeLimit(Duration limit) { timeLimit = limit; return this; }
-        @Override public Solver<CuttingSolution> workers(int threads)       { workers = threads;  return this; }
-        @Override public Solver<CuttingSolution> seed(long randomSeed)      { seed = randomSeed;  return this; }
-        @Override public Solver<CuttingSolution> verbose(boolean log)       { verbose = log;      return this; }
-
         @Override
         public CuttingSolution solve() {
-            return new CpSatCuttingSolver(stocks, pieces, goal, droppingPenalty)
-                    .timeLimit(timeLimit)
-                    .workers(workers)
-                    .seed(seed)
-                    .verbose(verbose)
-                    .solve();
+            return new CpSatCuttingSolver(stocks, pieces, goal, droppingPenalty, params, listener, warmStart).solve();
         }
     }
 }

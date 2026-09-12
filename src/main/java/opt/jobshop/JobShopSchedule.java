@@ -43,6 +43,11 @@ public final class JobShopSchedule implements Solution {
         return makespan;
     }
 
+    /** Returns every scheduled operation, in job declaration order then operation index. */
+    public List<ScheduledOperation> operations() {
+        return operations;
+    }
+
     /** Returns all operations scheduled on the given machine, ordered by start time. */
     public List<ScheduledOperation> timelineOf(String machine) {
         return operations.stream()

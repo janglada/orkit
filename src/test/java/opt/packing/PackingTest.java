@@ -1,6 +1,5 @@
 package opt.packing;
 
-import com.google.ortools.Loader;
 import opt.ModelException;
 import opt.SolveStatus;
 import org.junit.jupiter.api.Test;
@@ -12,10 +11,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PackingTest {
-
-    static {
-        Loader.loadNativeLibraries();
-    }
 
     // ── T-Pk1: Known-optimal packing — 2 containers, 5 small boxes all fit ──────
     // Five 2x2x2 boxes fit easily inside a single 10x10x10 container; with the

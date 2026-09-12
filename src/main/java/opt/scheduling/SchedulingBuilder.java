@@ -1,14 +1,14 @@
 package opt.scheduling;
 
 import opt.ModelException;
-import opt.OptimizationProblem;
-import opt.Solver;
+import opt.CpSatProblem;
+import opt.CpSatSolver;
+import opt.internal.AbstractCpSatSolver;
 import opt.internal.Validate;
 import opt.scheduling.internal.CpSatSchedulingSolver;
 import opt.scheduling.internal.EmployeeDef;
 import opt.scheduling.internal.ShiftDef;
 
-import java.time.Duration;
 import java.util.Set;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /** Fluent builder for employee scheduling problems. Entry point: {@code Optimize.scheduling()}. */
-public final class SchedulingBuilder implements OptimizationProblem<EmployeeRoster> {
+public final class SchedulingBuilder implements CpSatProblem<EmployeeRoster> {
 
     private LocalDate horizonStart;
     private int horizonDays;
@@ -94,14 +94,14 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
     }
 
     /** Builds an immutable, reusable problem instance without running the solver. */
-    public OptimizationProblem<EmployeeRoster> build() {
+    public CpSatProblem<EmployeeRoster> build() {
         validateHorizon();
         return new SchedulingProblem(snapshot());
     }
 
     /** Convenience method: builds the problem and immediately returns its {@link Solver}. */
     @Override
-    public Solver<EmployeeRoster> solver() {
+    public CpSatSolver<EmployeeRoster> solver() {
         return build().solver();
     }
 
@@ -136,7 +136,7 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
             SchedulingGoal objective
     ) {}
 
-    private static final class SchedulingProblem implements OptimizationProblem<EmployeeRoster> {
+    private static final class SchedulingProblem implements CpSatProblem<EmployeeRoster> {
 
         private final Snapshot snap;
 
@@ -145,63 +145,27 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
         }
 
         @Override
-        public Solver<EmployeeRoster> solver() {
+        public CpSatSolver<EmployeeRoster> solver() {
             return new SchedulingSolver(snap);
         }
     }
 
-    private static final class SchedulingSolver implements Solver<EmployeeRoster> {
+    private static final class SchedulingSolver extends AbstractCpSatSolver<EmployeeRoster> {
 
         private final Snapshot snap;
-        private Duration timeLimit = Duration.ofMinutes(1);
-        private int workers = 1;
-        private long seed = 0;
-        private boolean verbose = false;
 
         SchedulingSolver(Snapshot snap) {
             this.snap = snap;
         }
 
-        /** Sets the maximum wall-clock time the solver may run. */
-        @Override
-        public Solver<EmployeeRoster> timeLimit(Duration limit) {
-            this.timeLimit = limit;
-            return this;
-        }
-
-        /** Sets the number of parallel CP-SAT worker threads. */
-        @Override
-        public Solver<EmployeeRoster> workers(int threads) {
-            this.workers = threads;
-            return this;
-        }
-
-        /** Sets the random seed for CP-SAT's search randomness. */
-        @Override
-        public Solver<EmployeeRoster> seed(long randomSeed) {
-            this.seed = randomSeed;
-            return this;
-        }
-
-        /** Enables or disables CP-SAT search-progress logging to stdout. */
-        @Override
-        public Solver<EmployeeRoster> verbose(boolean logToStdout) {
-            this.verbose = logToStdout;
-            return this;
-        }
-
         /** Runs the configured CP-SAT solver and returns the resulting {@link EmployeeRoster}. */
         @Override
         public EmployeeRoster solve() {
-            CpSatSchedulingSolver cpSat = new CpSatSchedulingSolver(
+            return new CpSatSchedulingSolver(
                     snap.employees(), snap.shifts(),
                     snap.horizonStart(), snap.horizonDays(),
-                    snap.rules(), snap.softGoals(), snap.objective());
-            cpSat.timeLimit(timeLimit).workers(workers).seed(seed).verbose(verbose);
-
-            CpSatSchedulingSolver.EmployeeRosterResult result = cpSat.solve();
-            return new EmployeeRoster(
-                    result.status(), result.objective(), result.runtime(), result.assignments());
+                    snap.rules(), snap.softGoals(), snap.objective(),
+                    params, listener, warmStart).solve();
         }
     }
 }

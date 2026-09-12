@@ -12,6 +12,10 @@ import java.util.List;
 /**
  * Routing-specific solver that adds {@link #firstSolution} and {@link #improveWith}
  * on top of the shared {@link Solver} interface.
+ * <p>
+ * Unlike the CP-SAT domains, routing exposes no worker count or random seed: the
+ * OR-Tools routing search parameters have no such settings, so accepting them here
+ * would silently do nothing.
  */
 public final class RoutingSolver implements Solver<RoutingPlan> {
 
@@ -24,8 +28,6 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
     private final double travelSpeedKmh;
 
     private Duration timeLimit = Duration.ofSeconds(30);
-    private int workers = 1;
-    private long seed = 0;
     private boolean verbose = false;
     private Strategy firstSolutionStrategy = Strategy.AUTOMATIC;
     private Metaheuristic metaheuristic = Metaheuristic.AUTOMATIC;
@@ -45,10 +47,6 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
 
     /** Sets the wall-clock time budget for the search; default 30 seconds. */
     @Override public RoutingSolver timeLimit(Duration limit) { this.timeLimit = limit;   return this; }
-    /** Sets the number of parallel search workers; default 1. */
-    @Override public RoutingSolver workers(int threads)       { this.workers = threads;   return this; }
-    /** Seeds the randomized local-search component for reproducibility. */
-    @Override public RoutingSolver seed(long randomSeed)      { this.seed = randomSeed;   return this; }
     /** Enables OR-Tools search log output. */
     @Override public RoutingSolver verbose(boolean log)       { this.verbose = log;       return this; }
 
@@ -77,8 +75,6 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
                 depots, vehicles, stops, distanceSource, droppingPenalty,
                 firstSolutionStrategy, metaheuristic, goal, travelSpeedKmh)
                 .timeLimit(timeLimit)
-                .workers(workers)
-                .seed(seed)
                 .verbose(verbose)
                 .solve();
     }

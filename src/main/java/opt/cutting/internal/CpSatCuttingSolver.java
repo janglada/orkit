@@ -3,6 +3,8 @@ package opt.cutting.internal;
 import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
+import opt.internal.CpSatParams;
+import java.util.function.Consumer;
 import opt.cutting.CuttingGoal;
 import opt.cutting.CuttingSolution;
 import opt.cutting.StockAssignment;
@@ -34,35 +36,26 @@ public final class CpSatCuttingSolver {
     private final List<PieceDef> pieces;
     private final CuttingGoal goal;
     private final long droppingPenalty;
+    private final CpSatParams params;
+    private final Consumer<CuttingSolution> listener;
+    private final CuttingSolution warmStart;
 
-    private double timeLimitSeconds = 60;
-    private int workers = 1;
-    private long seed = 0;
-    private boolean verbose = false;
 
     /**
      * Creates a solver for the given expanded rolls, piece instances, and objective.
      * Internal; obtain instances via {@link opt.cutting.CuttingBuilder#solver()}.
      */
-    public CpSatCuttingSolver(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal, long droppingPenalty) {
+    public CpSatCuttingSolver(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal, long droppingPenalty,
+                              CpSatParams params, Consumer<CuttingSolution> listener, CuttingSolution warmStart) {
         this.stocks = List.copyOf(stocks);
         this.pieces = List.copyOf(pieces);
         this.goal = goal;
         this.droppingPenalty = droppingPenalty;
+        this.params = (params == null) ? new CpSatParams() : params;
+        this.listener = listener;
+        this.warmStart = warmStart;
     }
 
-    /** Sets the maximum wall-clock time the solver may run before giving up. */
-    public CpSatCuttingSolver timeLimit(Duration limit) {
-        if (limit == null) throw new ModelException("timeLimit must not be null.");
-        this.timeLimitSeconds = limit.toMillis() / 1000.0;
-        return this;
-    }
-    /** Sets the number of parallel search workers (threads). */
-    public CpSatCuttingSolver workers(int n)            { this.workers = n;                            return this; }
-    /** Sets the random seed used to make search reproducible. */
-    public CpSatCuttingSolver seed(long s)              { this.seed = s;                               return this; }
-    /** Enables or disables logging of search progress to standard output. */
-    public CpSatCuttingSolver verbose(boolean v)        { this.verbose = v;                            return this; }
 
     /**
      * Builds the CP-SAT model, solves it, and maps the result back to roll/piece
@@ -184,59 +177,52 @@ public final class CpSatCuttingSolver {
         }
         model.minimize(obj);
 
-        // Solve
-        CpSolver solver = new CpSolver();
-        solver.getParameters().setMaxTimeInSeconds(timeLimitSeconds);
-        solver.getParameters().setNumWorkers(workers);
-        solver.getParameters().setRandomSeed((int) seed);
-        solver.getParameters().setLogSearchProgress(verbose);
+        if (warmStart != null) applyWarmStart1D(model, x, s);
 
-        long startMs = System.currentTimeMillis();
-        CpSolverStatus cpStatus = solver.solve(model);
-        Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
+        CpSatParams.Extractor<CuttingSolution> extract = (v, status, runtime) -> {
+            List<StockAssignment> assignments = new ArrayList<>();
+            List<String> unplacedPieces = new ArrayList<>();
 
-        SolveStatus status =  SolveStatus.mapStatus(cpStatus);
-        List<StockAssignment> assignments = new ArrayList<>();
-        List<String> unplacedPieces = new ArrayList<>();
-
-        if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
-            // Group cut pieces by roll
-            Map<Integer, List<CutPiece>> piecesByRoll = new LinkedHashMap<>();
-            for (int r = 0; r < R; r++) {
-                piecesByRoll.put(r, new ArrayList<>());
-            }
-            for (int p = 0; p < P; p++) {
-                int assignedRoll = -1;
+            if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
+                // Group cut pieces by roll
+                Map<Integer, List<CutPiece>> piecesByRoll = new LinkedHashMap<>();
                 for (int r = 0; r < R; r++) {
-                    if (solver.booleanValue(x[p][r])) {
-                        assignedRoll = r;
-                        break;
+                    piecesByRoll.put(r, new ArrayList<>());
+                }
+                for (int p = 0; p < P; p++) {
+                    int assignedRoll = -1;
+                    for (int r = 0; r < R; r++) {
+                        if (v.booleanValue(x[p][r])) {
+                            assignedRoll = r;
+                            break;
+                        }
+                    }
+                    if (assignedRoll >= 0) {
+                        long startVal = v.value(s[p][assignedRoll]);
+                        piecesByRoll.get(assignedRoll).add(
+                                new CutPiece(pieces.get(p).id(), pieces.get(p).length(), startVal, 0L, 0));
+                    } else {
+                        unplacedPieces.add(pieces.get(p).id());
                     }
                 }
-                if (assignedRoll >= 0) {
-                    long startVal = solver.value(s[p][assignedRoll]);
-                    piecesByRoll.get(assignedRoll).add(
-                            new CutPiece(pieces.get(p).id(), pieces.get(p).length(), startVal, 0L, 0));
-                } else {
-                    unplacedPieces.add(pieces.get(p).id());
+
+                for (int r = 0; r < R; r++) {
+                    StockDef roll = stocks.get(r);
+                    List<CutPiece> cuts = piecesByRoll.get(r);
+                    long cutLength = cuts.stream().mapToLong(CutPiece::length).sum();
+                    long waste = cuts.isEmpty() ? 0L : roll.length() - cutLength;
+                    assignments.add(new StockAssignment(roll.id(), roll.length(), 0L, roll.cost(),
+                            List.copyOf(cuts), waste));
                 }
             }
 
-            for (int r = 0; r < R; r++) {
-                StockDef roll = stocks.get(r);
-                List<CutPiece> cuts = piecesByRoll.get(r);
-                long cutLength = cuts.stream().mapToLong(CutPiece::length).sum();
-                long waste = cuts.isEmpty() ? 0L : roll.length() - cutLength;
-                assignments.add(new StockAssignment(roll.id(), roll.length(), 0L, roll.cost(),
-                        List.copyOf(cuts), waste));
-            }
-        }
+            OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
+                    ? OptionalDouble.of(v.objectiveValue())
+                    : OptionalDouble.empty();
 
-        OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
-                ? OptionalDouble.of(solver.objectiveValue())
-                : OptionalDouble.empty();
-
-        return new CuttingSolution(status, objValue, runtime, assignments, unplacedPieces);
+            return new CuttingSolution(status, objValue, runtime, assignments, unplacedPieces);
+        };
+        return params.solve(model, extract, listener);
     }
 
     // ── 2D non-guillotine path ────────────────────────────────────────────────
@@ -386,60 +372,87 @@ public final class CpSatCuttingSolver {
         }
         model.minimize(obj);
 
-        // Solve
-        CpSolver solver = new CpSolver();
-        solver.getParameters().setMaxTimeInSeconds(timeLimitSeconds);
-        solver.getParameters().setNumWorkers(workers);
-        solver.getParameters().setRandomSeed((int) seed);
-        solver.getParameters().setLogSearchProgress(verbose);
+        if (warmStart != null) applyWarmStart2D(model, x, sx, sy);
 
-        long startMs = System.currentTimeMillis();
-        CpSolverStatus cpStatus = solver.solve(model);
-        Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
+        CpSatParams.Extractor<CuttingSolution> extract = (v, status, runtime) -> {
+            List<StockAssignment> assignments = new ArrayList<>();
+            List<String> unplacedPieces = new ArrayList<>();
 
-        SolveStatus status = SolveStatus.mapStatus(cpStatus);
-        List<StockAssignment> assignments = new ArrayList<>();
-        List<String> unplacedPieces = new ArrayList<>();
-
-        if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
-            Map<Integer, List<CutPiece>> piecesBySheet = new LinkedHashMap<>();
-            for (int r = 0; r < R; r++) {
-                piecesBySheet.put(r, new ArrayList<>());
-            }
-            for (int p = 0; p < P; p++) {
-                int assignedSheet = -1;
+            if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
+                Map<Integer, List<CutPiece>> piecesBySheet = new LinkedHashMap<>();
                 for (int r = 0; r < R; r++) {
-                    if (solver.booleanValue(x[p][r])) {
-                        assignedSheet = r;
-                        break;
+                    piecesBySheet.put(r, new ArrayList<>());
+                }
+                for (int p = 0; p < P; p++) {
+                    int assignedSheet = -1;
+                    for (int r = 0; r < R; r++) {
+                        if (v.booleanValue(x[p][r])) {
+                            assignedSheet = r;
+                            break;
+                        }
+                    }
+                    if (assignedSheet >= 0) {
+                        long xVal = v.value(sx[p][assignedSheet]);
+                        long yVal = v.value(sy[p][assignedSheet]);
+                        piecesBySheet.get(assignedSheet).add(
+                                new CutPiece(pieces.get(p).id(), pieces.get(p).length(),
+                                        xVal, yVal, pieces.get(p).width()));
+                    } else {
+                        unplacedPieces.add(pieces.get(p).id());
                     }
                 }
-                if (assignedSheet >= 0) {
-                    long xVal = solver.value(sx[p][assignedSheet]);
-                    long yVal = solver.value(sy[p][assignedSheet]);
-                    piecesBySheet.get(assignedSheet).add(
-                            new CutPiece(pieces.get(p).id(), pieces.get(p).length(),
-                                    xVal, yVal, pieces.get(p).width()));
-                } else {
-                    unplacedPieces.add(pieces.get(p).id());
+
+                for (int r = 0; r < R; r++) {
+                    StockDef sheet = stocks.get(r);
+                    List<CutPiece> cuts = piecesBySheet.get(r);
+                    long cutArea = cuts.stream().mapToLong(c -> c.length() * c.width()).sum();
+                    long waste = cuts.isEmpty() ? 0L : sheet.length() * sheet.width() - cutArea;
+                    assignments.add(new StockAssignment(sheet.id(), sheet.length(), sheet.width(),
+                            sheet.cost(), List.copyOf(cuts), waste));
                 }
             }
 
-            for (int r = 0; r < R; r++) {
-                StockDef sheet = stocks.get(r);
-                List<CutPiece> cuts = piecesBySheet.get(r);
-                long cutArea = cuts.stream().mapToLong(c -> c.length() * c.width()).sum();
-                long waste = cuts.isEmpty() ? 0L : sheet.length() * sheet.width() - cutArea;
-                assignments.add(new StockAssignment(sheet.id(), sheet.length(), sheet.width(),
-                        sheet.cost(), List.copyOf(cuts), waste));
+            OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
+                    ? OptionalDouble.of(v.objectiveValue())
+                    : OptionalDouble.empty();
+
+            return new CuttingSolution(status, objValue, runtime, assignments, unplacedPieces);
+        };
+        return params.solve(model, extract, listener);
+    }
+
+    /** Hints roll choice and offset for every piece placed in a previous 1D solution. */
+    private void applyWarmStart1D(CpModel model, BoolVar[][] x, IntVar[][] s) {
+        forEachPreviousPlacement((p, r, cut) -> {
+            for (int rr = 0; rr < stocks.size(); rr++) model.addHint(x[p][rr], rr == r ? 1 : 0);
+            if (s[p][r] != null) model.addHint(s[p][r], cut.x());
+        });
+    }
+
+    /** Hints sheet choice and X/Y origin for every piece placed in a previous 2D solution. */
+    private void applyWarmStart2D(CpModel model, BoolVar[][] x, IntVar[][] sx, IntVar[][] sy) {
+        forEachPreviousPlacement((p, r, cut) -> {
+            for (int rr = 0; rr < stocks.size(); rr++) model.addHint(x[p][rr], rr == r ? 1 : 0);
+            if (sx[p][r] != null) model.addHint(sx[p][r], cut.x());
+            if (sy[p][r] != null) model.addHint(sy[p][r], cut.y());
+        });
+    }
+
+    private interface PlacementVisitor { void visit(int pieceIdx, int stockIdx, CutPiece cut); }
+
+    private void forEachPreviousPlacement(PlacementVisitor visitor) {
+        Map<String, Integer> pieceIdx = new HashMap<>();
+        for (int p = 0; p < pieces.size(); p++) pieceIdx.put(pieces.get(p).id(), p);
+        Map<String, Integer> stockIdx = new HashMap<>();
+        for (int r = 0; r < stocks.size(); r++) stockIdx.put(stocks.get(r).id(), r);
+        for (StockAssignment a : warmStart.assignments()) {
+            Integer r = stockIdx.get(a.stockId());
+            if (r == null) continue;
+            for (CutPiece cut : a.pieces()) {
+                Integer p = pieceIdx.get(cut.pieceId());
+                if (p != null) visitor.visit(p, r, cut);
             }
         }
-
-        OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
-                ? OptionalDouble.of(solver.objectiveValue())
-                : OptionalDouble.empty();
-
-        return new CuttingSolution(status, objValue, runtime, assignments, unplacedPieces);
     }
 
     private void validate() {

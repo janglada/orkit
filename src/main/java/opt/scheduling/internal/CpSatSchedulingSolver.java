@@ -3,6 +3,8 @@ package opt.scheduling.internal;
 import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
+import opt.internal.CpSatParams;
+import java.util.function.Consumer;
 import opt.scheduling.*;
 
 import java.time.Duration;
@@ -23,11 +25,10 @@ public final class CpSatSchedulingSolver {
     private final List<Rule> rules;
     private final List<SoftGoal> softGoals;
     private final SchedulingGoal objective;
+    private final CpSatParams params;
+    private final Consumer<EmployeeRoster> listener;
+    private final EmployeeRoster warmStart;
 
-    private double timeLimitSeconds = 60;
-    private int workers = 1;
-    private long seed = 0;
-    private boolean verbose = false;
 
     /** Creates a solver bound to the given scheduling model description; inputs are defensively copied. */
     public CpSatSchedulingSolver(List<EmployeeDef> employees,
@@ -36,7 +37,10 @@ public final class CpSatSchedulingSolver {
                                  int horizonDays,
                                  List<Rule> rules,
                                  List<SoftGoal> softGoals,
-                                 SchedulingGoal objective) {
+                                 SchedulingGoal objective,
+                                 CpSatParams params,
+                                 Consumer<EmployeeRoster> listener,
+                                 EmployeeRoster warmStart) {
         this.employees = List.copyOf(employees);
         this.shifts = List.copyOf(shifts);
         this.horizonStart = horizonStart;
@@ -44,20 +48,11 @@ public final class CpSatSchedulingSolver {
         this.rules = List.copyOf(rules);
         this.softGoals = List.copyOf(softGoals);
         this.objective = objective;
+        this.params = (params == null) ? new CpSatParams() : params;
+        this.listener = listener;
+        this.warmStart = warmStart;
     }
 
-    /** Sets the maximum wall-clock time the solver may run. */
-    public CpSatSchedulingSolver timeLimit(Duration limit) {
-        if (limit == null) throw new ModelException("timeLimit must not be null.");
-        this.timeLimitSeconds = limit.toMillis() / 1000.0;
-        return this;
-    }
-    /** Sets the number of parallel CP-SAT worker threads. */
-    public CpSatSchedulingSolver workers(int n)            { this.workers = n;                           return this; }
-    /** Sets the random seed for CP-SAT's search randomness. */
-    public CpSatSchedulingSolver seed(long s)              { this.seed = s;                              return this; }
-    /** Enables or disables CP-SAT search-progress logging to stdout. */
-    public CpSatSchedulingSolver verbose(boolean v)        { this.verbose = v;                           return this; }
 
     /**
      * Builds the CP-SAT model from the configured employees, shifts, rules, soft goals, and
@@ -67,9 +62,9 @@ public final class CpSatSchedulingSolver {
      * enforces each shift's staffing requirement as an equality, applies weekly hour caps and
      * all registered hard {@link Rule}s, and finally minimizes the combined objective (primary
      * {@link SchedulingGoal} plus any {@link SoftGoal} penalties/rewards).
-     * @return the solver's status, objective value, runtime, and resulting assignments
+     * @return the solved roster
      */
-    public EmployeeRosterResult solve() {
+    public EmployeeRoster solve() {
         validate();
 
         int E = employees.size();
@@ -193,40 +188,46 @@ public final class CpSatSchedulingSolver {
             model.minimize(objExpr);
         }
 
-        // Solve
-        CpSolver solver = new CpSolver();
-        solver.getParameters().setMaxTimeInSeconds(timeLimitSeconds);
-        solver.getParameters().setNumWorkers(workers);
-        solver.getParameters().setRandomSeed((int) seed);
-        solver.getParameters().setLogSearchProgress(verbose);
+        final boolean objectiveModeled = hasObjective;
+        if (warmStart != null) applyWarmStart(model, x);
 
-        long startMs = System.currentTimeMillis();
-        CpSolverStatus cpStatus = solver.solve(model);
-        Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
+        CpSatParams.Extractor<EmployeeRoster> extract = (v, status, runtime) -> {
+            boolean feasible = status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE;
 
-        SolveStatus status = SolveStatus.mapStatus(cpStatus);
-        boolean feasible = status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE;
-
-        List<opt.scheduling.ShiftAssignment> assignments = new ArrayList<>();
-        if (feasible) {
-            for (int e = 0; e < E; e++) {
-                EmployeeDef emp = employees.get(e);
-                for (int s = 0; s < S; s++) {
-                    if (solver.booleanValue(x[e][s])) {
-                        ShiftDef shift = shifts.get(s);
-                        LocalDate date = shiftDate[s];
-                        assignments.add(new opt.scheduling.ShiftAssignment(
-                                emp.id(), shift.id(), date, shift.from(), shift.to()));
+            List<opt.scheduling.ShiftAssignment> assignments = new ArrayList<>();
+            if (feasible) {
+                for (int e = 0; e < E; e++) {
+                    EmployeeDef emp = employees.get(e);
+                    for (int s = 0; s < S; s++) {
+                        if (v.booleanValue(x[e][s])) {
+                            ShiftDef shift = shifts.get(s);
+                            LocalDate date = shiftDate[s];
+                            assignments.add(new opt.scheduling.ShiftAssignment(
+                                    emp.id(), shift.id(), date, shift.from(), shift.to()));
+                        }
                     }
                 }
             }
+
+            OptionalDouble objectiveValue = (objectiveModeled && feasible)
+                    ? OptionalDouble.of(v.objectiveValue())
+                    : OptionalDouble.empty();
+
+            return new EmployeeRoster(status, objectiveValue, runtime, assignments);
+        };
+        return params.solve(model, extract, listener);
+    }
+
+    /** Hints every (employee, shift) literal from a previous roster: 1 where it was assigned, 0 elsewhere. */
+    private void applyWarmStart(CpModel model, BoolVar[][] x) {
+        Set<String> assigned = new HashSet<>();
+        for (opt.scheduling.ShiftAssignment a : warmStart.assignments()) assigned.add(a.employee() + "\u0000" + a.shift());
+        for (int e = 0; e < employees.size(); e++) {
+            for (int s = 0; s < shifts.size(); s++) {
+                boolean on = assigned.contains(employees.get(e).id() + "\u0000" + shifts.get(s).id());
+                model.addHint(x[e][s], on ? 1 : 0);
+            }
         }
-
-        OptionalDouble objectiveValue = (hasObjective && feasible)
-                ? OptionalDouble.of(solver.objectiveValue())
-                : OptionalDouble.empty();
-
-        return new EmployeeRosterResult(status, objectiveValue, runtime, assignments);
     }
 
     // ── Soft goal helpers ───────────────────────────────────────────────────
@@ -429,16 +430,4 @@ public final class CpSatSchedulingSolver {
         }
     }
 
-
-    /** Raw solver output returned by {@link #solve()}.
-     *  @param status solver termination status
-     *  @param objective optimized objective value, or empty if no objective was modeled or no solution found
-     *  @param runtime wall-clock time spent solving
-     *  @param assignments list of employee-to-shift assignments; empty when no feasible solution exists */
-    public record EmployeeRosterResult(
-            SolveStatus status,
-            OptionalDouble objective,
-            Duration runtime,
-            List<opt.scheduling.ShiftAssignment> assignments
-    ) {}
 }

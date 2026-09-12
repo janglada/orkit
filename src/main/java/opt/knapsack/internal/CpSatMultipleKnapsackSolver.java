@@ -3,6 +3,8 @@ package opt.knapsack.internal;
 import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
+import opt.internal.CpSatParams;
+import java.util.function.Consumer;
 import opt.knapsack.BinAssignment;
 import opt.knapsack.KnapsackGoal;
 import opt.knapsack.MultipleKnapsackSolution;
@@ -23,31 +25,23 @@ public final class CpSatMultipleKnapsackSolver {
     private final List<ItemDef> items;
     private final List<BinDef> bins;
     private final KnapsackGoal goal;
+    private final CpSatParams params;
+    private final Consumer<MultipleKnapsackSolution> listener;
+    private final MultipleKnapsackSolution warmStart;
 
-    private double timeLimitSeconds = 60;
-    private int workers = 1;
-    private long seed = 0;
-    private boolean verbose = false;
 
     /** Creates a solver for the given items, bins, and goal. Internal; obtain via {@link opt.knapsack.MultipleKnapsackBuilder#solver()}. */
-    public CpSatMultipleKnapsackSolver(List<ItemDef> items, List<BinDef> bins, KnapsackGoal goal) {
+    public CpSatMultipleKnapsackSolver(List<ItemDef> items, List<BinDef> bins, KnapsackGoal goal,
+                                       CpSatParams params, Consumer<MultipleKnapsackSolution> listener,
+                                       MultipleKnapsackSolution warmStart) {
         this.items = List.copyOf(items);
         this.bins = List.copyOf(bins);
         this.goal = (goal == null) ? new KnapsackGoal.MaximizeTotalProfit() : goal;
+        this.params = (params == null) ? new CpSatParams() : params;
+        this.listener = listener;
+        this.warmStart = warmStart;
     }
 
-    /** Sets the maximum wall-clock time the solver may run before giving up. */
-    public CpSatMultipleKnapsackSolver timeLimit(Duration limit) {
-        if (limit == null) throw new ModelException("timeLimit must not be null.");
-        this.timeLimitSeconds = limit.toMillis() / 1000.0;
-        return this;
-    }
-    /** Sets the number of parallel search workers (threads). */
-    public CpSatMultipleKnapsackSolver workers(int n)            { this.workers = n;                            return this; }
-    /** Sets the random seed used to make search reproducible. */
-    public CpSatMultipleKnapsackSolver seed(long s)              { this.seed = s;                               return this; }
-    /** Enables or disables logging of search progress to standard output. */
-    public CpSatMultipleKnapsackSolver verbose(boolean v)        { this.verbose = v;                            return this; }
 
     /**
      * Builds the CP-SAT model, solves it, and maps the result back to bin/item
@@ -103,63 +97,66 @@ public final class CpSatMultipleKnapsackSolver {
             case KnapsackGoal.MaximizeTotalProfit g -> model.maximize(obj);
         }
 
-        // Solve
-        CpSolver solver = new CpSolver();
-        solver.getParameters().setMaxTimeInSeconds(timeLimitSeconds);
-        solver.getParameters().setNumWorkers(workers);
-        solver.getParameters().setRandomSeed((int) seed);
-        solver.getParameters().setLogSearchProgress(verbose);
+        if (warmStart != null) applyWarmStart(model, x);
 
-        long startMs = System.currentTimeMillis();
-        CpSolverStatus cpStatus = solver.solve(model);
-        Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
+        CpSatParams.Extractor<MultipleKnapsackSolution> extract = (v, status, runtime) -> {
+            long totalProfit = 0;
+            List<BinAssignment> assignments = new ArrayList<>();
+            List<String> unassignedItems = new ArrayList<>();
 
-        SolveStatus status = SolveStatus.mapStatus(cpStatus);
-        long totalProfit = 0;
-        List<BinAssignment> assignments = new ArrayList<>();
-        List<String> unassignedItems = new ArrayList<>();
-
-        if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
-            // Group assigned items by bin
-            Map<String, List<String>> itemsByBin = new LinkedHashMap<>();
-            for (String binId : bins.stream().map(BinDef::id).toList()) {
-                itemsByBin.put(binId, new ArrayList<>());
-            }
-            for (int i = 0; i < I; i++) {
-                String assignedBin = null;
-                for (int b = 0; b < B; b++) {
-                    if (solver.booleanValue(x[i][b])) {
-                        assignedBin = bins.get(b).id();
-                        break;
+            if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
+                // Group assigned items by bin
+                Map<String, List<String>> itemsByBin = new LinkedHashMap<>();
+                for (String binId : bins.stream().map(BinDef::id).toList()) {
+                    itemsByBin.put(binId, new ArrayList<>());
+                }
+                for (int i = 0; i < I; i++) {
+                    String assignedBin = null;
+                    for (int b = 0; b < B; b++) {
+                        if (v.booleanValue(x[i][b])) {
+                            assignedBin = bins.get(b).id();
+                            break;
+                        }
+                    }
+                    if (assignedBin != null) {
+                        itemsByBin.get(assignedBin).add(items.get(i).id());
+                    } else {
+                        unassignedItems.add(items.get(i).id());
                     }
                 }
-                if (assignedBin != null) {
-                    itemsByBin.get(assignedBin).add(items.get(i).id());
-                } else {
-                    unassignedItems.add(items.get(i).id());
+
+                // Build a BinAssignment per bin (including empty bins, to mirror declared bins)
+                for (BinDef bin : bins) {
+                    List<String> packed = itemsByBin.get(bin.id());
+                    long usedCapacity = 0;
+                    long profit = 0;
+                    for (String itemId : packed) {
+                        ItemDef item = itemById(itemId);
+                        usedCapacity += item.weight();
+                        profit += item.profit();
+                    }
+                    assignments.add(new BinAssignment(bin.id(), bin.capacity(), List.copyOf(packed), usedCapacity, profit));
+                    totalProfit += profit;
                 }
             }
 
-            // Build a BinAssignment per bin (including empty bins, to mirror declared bins)
-            for (BinDef bin : bins) {
-                List<String> packed = itemsByBin.get(bin.id());
-                long usedCapacity = 0;
-                long profit = 0;
-                for (String itemId : packed) {
-                    ItemDef item = itemById(itemId);
-                    usedCapacity += item.weight();
-                    profit += item.profit();
-                }
-                assignments.add(new BinAssignment(bin.id(), bin.capacity(), List.copyOf(packed), usedCapacity, profit));
-                totalProfit += profit;
+            OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
+                    ? OptionalDouble.of(totalProfit)
+                    : OptionalDouble.empty();
+
+            return new MultipleKnapsackSolution(status, objValue, runtime, totalProfit, assignments, unassignedItems);
+        };
+        return params.solve(model, extract, listener);
+    }
+
+    /** Hints every (item, bin) literal from a previous solution. */
+    private void applyWarmStart(CpModel model, BoolVar[][] x) {
+        for (int i = 0; i < items.size(); i++) {
+            String prevBin = warmStart.binOf(items.get(i).id());
+            for (int b = 0; b < bins.size(); b++) {
+                model.addHint(x[i][b], bins.get(b).id().equals(prevBin) ? 1 : 0);
             }
         }
-
-        OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
-                ? OptionalDouble.of(totalProfit)
-                : OptionalDouble.empty();
-
-        return new MultipleKnapsackSolution(status, objValue, runtime, totalProfit, assignments, unassignedItems);
     }
 
     private ItemDef itemById(String id) {

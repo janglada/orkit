@@ -1,14 +1,14 @@
 package opt.packing;
 
 import opt.ModelException;
-import opt.OptimizationProblem;
-import opt.Solver;
+import opt.CpSatProblem;
+import opt.CpSatSolver;
+import opt.internal.AbstractCpSatSolver;
 import opt.internal.Validate;
 import opt.packing.internal.BoxDef;
 import opt.packing.internal.ContainerDef;
 import opt.packing.internal.CpSatPackingSolver;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /** Fluent builder for container-loading / 3D bin packing problems. Entry point: {@code Optimize.packing()}. */
-public final class PackingBuilder implements OptimizationProblem<PackingSolution> {
+public final class PackingBuilder implements CpSatProblem<PackingSolution> {
 
     private final List<ContainerDef> containers = new ArrayList<>();
     private final List<BoxDef> boxes = new ArrayList<>();
@@ -94,19 +94,19 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
     }
 
     /** Builds an immutable, reusable problem instance. */
-    public OptimizationProblem<PackingSolution> build() {
+    public CpSatProblem<PackingSolution> build() {
         return new PackingProblem(List.copyOf(containers), List.copyOf(boxes), goal, requireSupport);
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
     @Override
-    public Solver<PackingSolution> solver() {
+    public CpSatSolver<PackingSolution> solver() {
         return build().solver();
     }
 
     // ── Problem + Solver ────────────────────────────────────────────────────
 
-    private static final class PackingProblem implements OptimizationProblem<PackingSolution> {
+    private static final class PackingProblem implements CpSatProblem<PackingSolution> {
 
         private final List<ContainerDef> containers;
         private final List<BoxDef> boxes;
@@ -122,21 +122,17 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
         }
 
         @Override
-        public Solver<PackingSolution> solver() {
+        public CpSatSolver<PackingSolution> solver() {
             return new PackingSolver(containers, boxes, goal, requireSupport);
         }
     }
 
-    private static final class PackingSolver implements Solver<PackingSolution> {
+    private static final class PackingSolver extends AbstractCpSatSolver<PackingSolution> {
 
         private final List<ContainerDef> containers;
         private final List<BoxDef> boxes;
         private final PackingGoal goal;
         private final boolean requireSupport;
-        private Duration timeLimit = Duration.ofMinutes(1);
-        private int workers = 1;
-        private long seed = 0;
-        private boolean verbose = false;
 
         PackingSolver(List<ContainerDef> containers, List<BoxDef> boxes,
                       PackingGoal goal, boolean requireSupport) {
@@ -146,19 +142,9 @@ public final class PackingBuilder implements OptimizationProblem<PackingSolution
             this.requireSupport = requireSupport;
         }
 
-        @Override public Solver<PackingSolution> timeLimit(Duration limit) { timeLimit = limit;    return this; }
-        @Override public Solver<PackingSolution> workers(int threads)     { workers = threads;    return this; }
-        @Override public Solver<PackingSolution> seed(long randomSeed)    { seed = randomSeed;    return this; }
-        @Override public Solver<PackingSolution> verbose(boolean log)      { verbose = log;        return this; }
-
         @Override
         public PackingSolution solve() {
-            return new CpSatPackingSolver(containers, boxes, goal, requireSupport)
-                    .timeLimit(timeLimit)
-                    .workers(workers)
-                    .seed(seed)
-                    .verbose(verbose)
-                    .solve();
+            return new CpSatPackingSolver(containers, boxes, goal, requireSupport, params, listener, warmStart).solve();
         }
     }
 }

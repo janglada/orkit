@@ -3,6 +3,8 @@ package opt.jobshop.internal;
 import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
+import opt.internal.CpSatParams;
+import java.util.function.Consumer;
 import opt.jobshop.JobShopGoal;
 import opt.jobshop.JobShopSchedule;
 import opt.jobshop.ScheduledOperation;
@@ -17,11 +19,10 @@ public final class CpSatJobShopSolver {
     private final List<JobDef> jobs;
     private final SetupMatrix setupMatrix;
     private final JobShopGoal goal;
+    private final CpSatParams params;
+    private final Consumer<JobShopSchedule> listener;
+    private final JobShopSchedule warmStart;
 
-    private double timeLimitSeconds = 60;
-    private int workers = 1;
-    private long seed = 0;
-    private boolean verbose = false;
 
     /** Interval variables built for one operation. */
     private record OpIntervals(
@@ -37,25 +38,17 @@ public final class CpSatJobShopSolver {
             IntVar tardiness) {}
 
     /** Creates a solver for the given machines, jobs, setup matrix, and objective. Internal; obtain via {@link opt.jobshop.JobShopBuilder#solver()}. */
-    public CpSatJobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal) {
+    public CpSatJobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal,
+                              CpSatParams params, Consumer<JobShopSchedule> listener, JobShopSchedule warmStart) {
         this.machines = List.copyOf(machines);
         this.jobs = List.copyOf(jobs);
         this.setupMatrix = (setupMatrix == null) ? SetupMatrix.empty() : setupMatrix;
         this.goal = (goal == null) ? new JobShopGoal.MinimizeMakespan() : goal;
+        this.params = (params == null) ? new CpSatParams() : params;
+        this.listener = listener;
+        this.warmStart = warmStart;
     }
 
-    /** Sets the maximum time the CP-SAT solver may run. */
-    public CpSatJobShopSolver timeLimit(Duration limit) {
-        if (limit == null) throw new ModelException("timeLimit must not be null.");
-        this.timeLimitSeconds = limit.toMillis() / 1000.0;
-        return this;
-    }
-    /** Sets the number of parallel search workers. */
-    public CpSatJobShopSolver workers(int n)            { this.workers = n;                            return this; }
-    /** Sets the random seed for the CP-SAT search. */
-    public CpSatJobShopSolver seed(long s)              { this.seed = s;                               return this; }
-    /** Enables or disables CP-SAT search-progress logging. */
-    public CpSatJobShopSolver verbose(boolean v)        { this.verbose = v;                            return this; }
 
     /**
      * Builds the CP-SAT model (interval variables, per-machine sequencing via
@@ -198,51 +191,62 @@ public final class CpSatJobShopSolver {
         }
         model.minimize(obj.build());
 
-        // Solve
-        CpSolver solver = new CpSolver();
-        solver.getParameters().setMaxTimeInSeconds(timeLimitSeconds);
-        solver.getParameters().setNumWorkers(workers);
-        solver.getParameters().setRandomSeed((int) seed);
-        solver.getParameters().setLogSearchProgress(verbose);
+        if (warmStart != null) applyWarmStart(model, allIntervals);
 
-        long startMs = System.currentTimeMillis();
-        CpSolverStatus cpStatus = solver.solve(model);
-        Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
+        CpSatParams.Extractor<JobShopSchedule> extract = (v, status, runtime) -> {
+            long makespanValue = 0;
+            List<ScheduledOperation> operations = new ArrayList<>();
 
-        SolveStatus status = SolveStatus.mapStatus(cpStatus);
-        long makespanValue = 0;
-        List<ScheduledOperation> operations = new ArrayList<>();
-
-        if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
-            makespanValue = solver.value(makespan);
-            for (int j = 0; j < jobs.size(); j++) {
-                JobDef job = jobs.get(j);
-                List<OperationDef> ops = job.operations();
-                List<OpIntervals> intervals = allIntervals.get(j);
-                for (int o = 0; o < ops.size(); o++) {
-                    OperationDef op = ops.get(o);
-                    OpIntervals iv = intervals.get(o);
-                    long start = solver.value(iv.start());
-                    long end   = solver.value(iv.end());
-                    String assignedMachine;
-                    if (op.isFlexible()) {
-                        assignedMachine = op.machines().stream()
-                                .filter(m -> solver.booleanValue(iv.presences().get(m)))
-                                .findFirst()
-                                .orElseThrow();
-                    } else {
-                        assignedMachine = op.machine();
+            if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
+                makespanValue = v.value(makespan);
+                for (int j = 0; j < jobs.size(); j++) {
+                    JobDef job = jobs.get(j);
+                    List<OperationDef> ops = job.operations();
+                    List<OpIntervals> intervals = allIntervals.get(j);
+                    for (int o = 0; o < ops.size(); o++) {
+                        OperationDef op = ops.get(o);
+                        OpIntervals iv = intervals.get(o);
+                        long start = v.value(iv.start());
+                        long end   = v.value(iv.end());
+                        String assignedMachine;
+                        if (op.isFlexible()) {
+                            assignedMachine = op.machines().stream()
+                                    .filter(m -> v.booleanValue(iv.presences().get(m)))
+                                    .findFirst()
+                                    .orElseThrow();
+                        } else {
+                            assignedMachine = op.machine();
+                        }
+                        operations.add(new ScheduledOperation(job.id(), o, assignedMachine, start, end));
                     }
-                    operations.add(new ScheduledOperation(job.id(), o, assignedMachine, start, end));
+                }
+            }
+
+            OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
+                    ? OptionalDouble.of(v.objectiveValue())
+                    : OptionalDouble.empty();
+
+            return new JobShopSchedule(status, objValue, runtime, makespanValue, machines, operations);
+        };
+        return params.solve(model, extract, listener);
+    }
+
+    /** Hints every operation's start (and, for flexible ops, its machine choice) from a previous schedule. */
+    private void applyWarmStart(CpModel model, List<List<OpIntervals>> allIntervals) {
+        Map<String, Integer> jobIndex = new HashMap<>();
+        for (int j = 0; j < jobs.size(); j++) jobIndex.put(jobs.get(j).id(), j);
+        for (ScheduledOperation prev : warmStart.operations()) {
+            Integer j = jobIndex.get(prev.job());
+            if (j == null || prev.index() < 0 || prev.index() >= jobs.get(j).operations().size()) continue;
+            OperationDef op = jobs.get(j).operations().get(prev.index());
+            OpIntervals iv = allIntervals.get(j).get(prev.index());
+            model.addHint(iv.start(), prev.start());
+            if (op.isFlexible()) {
+                for (var e : iv.presences().entrySet()) {
+                    model.addHint(e.getValue(), e.getKey().equals(prev.machine()) ? 1 : 0);
                 }
             }
         }
-
-        OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
-                ? OptionalDouble.of(solver.objectiveValue())
-                : OptionalDouble.empty();
-
-        return new JobShopSchedule(status, objValue, runtime, makespanValue, machines, operations);
     }
 
     /** Adds a plain {@code NoOverlap} over this machine's intervals (fixed + optional). */

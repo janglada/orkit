@@ -1,8 +1,9 @@
 package opt.booking;
 
 import opt.ModelException;
-import opt.OptimizationProblem;
-import opt.Solver;
+import opt.CpSatProblem;
+import opt.CpSatSolver;
+import opt.internal.AbstractCpSatSolver;
 import opt.booking.internal.AppointmentDef;
 import opt.booking.internal.CpSatBookingSolver;
 import opt.booking.internal.ResourceDef;
@@ -18,7 +19,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /** Fluent builder for resource-booking / appointment-scheduling problems. Entry point: {@code Optimize.booking()}. */
-public final class BookingBuilder implements OptimizationProblem<BookingSolution> {
+public final class BookingBuilder implements CpSatProblem<BookingSolution> {
 
     private final List<ResourceDef> resources = new ArrayList<>();
     private final List<AppointmentDef> appointments = new ArrayList<>();
@@ -119,20 +120,20 @@ public final class BookingBuilder implements OptimizationProblem<BookingSolution
     }
 
     /** Builds an immutable, reusable problem instance. */
-    public OptimizationProblem<BookingSolution> build() {
+    public CpSatProblem<BookingSolution> build() {
         return new BookingProblem(horizonStart, horizonDays, goal,
                 List.copyOf(resources), List.copyOf(appointments));
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
     @Override
-    public Solver<BookingSolution> solver() {
+    public CpSatSolver<BookingSolution> solver() {
         return build().solver();
     }
 
     // ── Problem + Solver ────────────────────────────────────────────────────
 
-    private static final class BookingProblem implements OptimizationProblem<BookingSolution> {
+    private static final class BookingProblem implements CpSatProblem<BookingSolution> {
 
         private final LocalDate horizonStart;
         private final int horizonDays;
@@ -150,12 +151,12 @@ public final class BookingBuilder implements OptimizationProblem<BookingSolution
         }
 
         @Override
-        public Solver<BookingSolution> solver() {
+        public CpSatSolver<BookingSolution> solver() {
             return new BookingSolver(horizonStart, horizonDays, goal, resources, appointments);
         }
     }
 
-    private static final class BookingSolver implements Solver<BookingSolution> {
+    private static final class BookingSolver extends AbstractCpSatSolver<BookingSolution> {
 
         private final LocalDate horizonStart;
         private final int horizonDays;
@@ -163,10 +164,6 @@ public final class BookingBuilder implements OptimizationProblem<BookingSolution
         private final List<ResourceDef> resources;
         private final List<AppointmentDef> appointments;
 
-        private Duration timeLimit = Duration.ofMinutes(1);
-        private int workers = 1;
-        private long seed = 0;
-        private boolean verbose = false;
 
         BookingSolver(LocalDate horizonStart, int horizonDays, BookingGoal goal,
                       List<ResourceDef> resources, List<AppointmentDef> appointments) {
@@ -177,19 +174,9 @@ public final class BookingBuilder implements OptimizationProblem<BookingSolution
             this.appointments = appointments;
         }
 
-        @Override public Solver<BookingSolution> timeLimit(Duration limit) { timeLimit = limit; return this; }
-        @Override public Solver<BookingSolution> workers(int threads)       { workers = threads;  return this; }
-        @Override public Solver<BookingSolution> seed(long randomSeed)      { seed = randomSeed;  return this; }
-        @Override public Solver<BookingSolution> verbose(boolean log)       { verbose = log;      return this; }
-
         @Override
         public BookingSolution solve() {
-            return new CpSatBookingSolver(horizonStart, horizonDays, goal, resources, appointments)
-                    .timeLimit(timeLimit)
-                    .workers(workers)
-                    .seed(seed)
-                    .verbose(verbose)
-                    .solve();
+            return new CpSatBookingSolver(horizonStart, horizonDays, goal, resources, appointments, params, listener, warmStart).solve();
         }
     }
 }

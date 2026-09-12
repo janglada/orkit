@@ -3,6 +3,8 @@ package opt.packing.internal;
 import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
+import opt.internal.CpSatParams;
+import java.util.function.Consumer;
 import opt.packing.ContainerAssignment;
 import opt.packing.Orientation;
 import opt.packing.PackingGoal;
@@ -48,32 +50,24 @@ public final class CpSatPackingSolver {
     private final List<ContainerDef> containers;
     private final PackingGoal goal;
     private final boolean requireSupport;
+    private final CpSatParams params;
+    private final Consumer<PackingSolution> listener;
+    private final PackingSolution warmStart;
 
-    private double timeLimitSeconds = 60;
-    private int workers = 1;
-    private long seed = 0;
-    private boolean verbose = false;
 
+    /** Creates a solver for the given containers, boxes, goal, and options. Internal; obtain via {@link opt.packing.PackingBuilder#solver()}. */
     public CpSatPackingSolver(List<ContainerDef> containers, List<BoxDef> boxes,
-                              PackingGoal goal, boolean requireSupport) {
+                              PackingGoal goal, boolean requireSupport,
+                              CpSatParams params, Consumer<PackingSolution> listener, PackingSolution warmStart) {
         this.containers = List.copyOf(containers);
         this.boxes = List.copyOf(boxes);
         this.goal = goal;
         this.requireSupport = requireSupport;
+        this.params = (params == null) ? new CpSatParams() : params;
+        this.listener = listener;
+        this.warmStart = warmStart;
     }
 
-    /** Sets the maximum wall-clock time the solver may run before giving up. */
-    public CpSatPackingSolver timeLimit(Duration limit) {
-        if (limit == null) throw new ModelException("timeLimit must not be null.");
-        this.timeLimitSeconds = limit.toMillis() / 1000.0;
-        return this;
-    }
-    /** Sets the number of parallel search workers (threads). */
-    public CpSatPackingSolver workers(int n)            { this.workers = n;            return this; }
-    /** Sets the random seed used to make search reproducible. */
-    public CpSatPackingSolver seed(long s)              { this.seed = s;                return this; }
-    /** Enables or disables logging of search progress to standard output. */
-    public CpSatPackingSolver verbose(boolean v)        { this.verbose = v;            return this; }
 
     /**
      * Builds the CP-SAT model, solves it, and maps the result back to container/box
@@ -412,86 +406,79 @@ public final class CpSatPackingSolver {
             case null, default -> throw new ModelException("Unsupported packing goal: " + goal);
         }
 
-        // Solve
-        CpSolver solver = new CpSolver();
-        solver.getParameters().setMaxTimeInSeconds(timeLimitSeconds);
-        solver.getParameters().setNumWorkers(workers);
-        solver.getParameters().setRandomSeed((int) seed);
-        solver.getParameters().setLogSearchProgress(verbose);
+        if (warmStart != null) applyWarmStart(model, x, sx, sy, sz, orientLits, fittingOrients);
 
-        long startMs = System.currentTimeMillis();
-        CpSolverStatus cpStatus = solver.solve(model);
-        Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
+        CpSatParams.Extractor<PackingSolution> extract = (v, status, runtime) -> {
+            List<ContainerAssignment> assignments = new ArrayList<>();
+            List<String> unassignedBoxes = new ArrayList<>();
 
-        SolveStatus status = SolveStatus.mapStatus(cpStatus);
-        List<ContainerAssignment> assignments = new ArrayList<>();
-        List<String> unassignedBoxes = new ArrayList<>();
-
-        if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
-            // Group placements by container (preserve declaration order, include empties)
-            Map<String, List<ContainerAssignment.BoxPlacement>> placementsByContainer = new LinkedHashMap<>();
-            for (ContainerDef cont : containers) {
-                placementsByContainer.put(cont.id(), new ArrayList<>());
-            }
-
-            for (int i = 0; i < I; i++) {
-                BoxDef box = boxes.get(i);
-                String placedIn = null;
-                long px = 0, py = 0, pz = 0;
-                int placedB = -1;
-                for (int b = 0; b < B; b++) {
-                    if (solver.booleanValue(x[i][b])) {
-                        placedIn = containers.get(b).id();
-                        px = solver.value(sx[i][b]);
-                        py = solver.value(sy[i][b]);
-                        pz = solver.value(sz[i][b]);
-                        placedB = b;
-                        break;
-                    }
+            if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
+                // Group placements by container (preserve declaration order, include empties)
+                Map<String, List<ContainerAssignment.BoxPlacement>> placementsByContainer = new LinkedHashMap<>();
+                for (ContainerDef cont : containers) {
+                    placementsByContainer.put(cont.id(), new ArrayList<>());
                 }
-                if (placedIn != null) {
-                    Orientation chosen = null;
-                    long pl = box.length(), pw = box.width(), ph = box.height();
-                    if (box.rotatable() && fittingOrients[i][placedB] != null) {
-                        List<Orientation> fitting = fittingOrients[i][placedB];
-                        List<BoolVar> lits = orientLits[i][placedB];
-                        for (int k = 0; k < fitting.size(); k++) {
-                            if (solver.booleanValue(lits.get(k))) {
-                                chosen = fitting.get(k);
-                                pl = chosen.length();
-                                pw = chosen.width();
-                                ph = chosen.height();
-                                break;
-                            }
+
+                for (int i = 0; i < I; i++) {
+                    BoxDef box = boxes.get(i);
+                    String placedIn = null;
+                    long px = 0, py = 0, pz = 0;
+                    int placedB = -1;
+                    for (int b = 0; b < B; b++) {
+                        if (v.booleanValue(x[i][b])) {
+                            placedIn = containers.get(b).id();
+                            px = v.value(sx[i][b]);
+                            py = v.value(sy[i][b]);
+                            pz = v.value(sz[i][b]);
+                            placedB = b;
+                            break;
                         }
                     }
-                    placementsByContainer.get(placedIn).add(new ContainerAssignment.BoxPlacement(
-                            box.id(), px, py, pz, pl, pw, ph, chosen));
-                } else {
-                    unassignedBoxes.add(box.id());
+                    if (placedIn != null) {
+                        Orientation chosen = null;
+                        long pl = box.length(), pw = box.width(), ph = box.height();
+                        if (box.rotatable() && fittingOrients[i][placedB] != null) {
+                            List<Orientation> fitting = fittingOrients[i][placedB];
+                            List<BoolVar> lits = orientLits[i][placedB];
+                            for (int k = 0; k < fitting.size(); k++) {
+                                if (v.booleanValue(lits.get(k))) {
+                                    chosen = fitting.get(k);
+                                    pl = chosen.length();
+                                    pw = chosen.width();
+                                    ph = chosen.height();
+                                    break;
+                                }
+                            }
+                        }
+                        placementsByContainer.get(placedIn).add(new ContainerAssignment.BoxPlacement(
+                                box.id(), px, py, pz, pl, pw, ph, chosen));
+                    } else {
+                        unassignedBoxes.add(box.id());
+                    }
+                }
+
+                // Build a ContainerAssignment per container (including empty ones)
+                for (ContainerDef cont : containers) {
+                    List<ContainerAssignment.BoxPlacement> placements = placementsByContainer.get(cont.id());
+                    long usedVolume = 0;
+                    long usedWeight = 0;
+                    for (ContainerAssignment.BoxPlacement p : placements) {
+                        usedVolume += p.length() * p.width() * p.height();
+                        usedWeight += boxById(p.boxId()).weight();
+                    }
+                    assignments.add(new ContainerAssignment(
+                            cont.id(), cont.length(), cont.width(), cont.height(), cont.maxWeight(),
+                            List.copyOf(placements), usedVolume, usedWeight));
                 }
             }
 
-            // Build a ContainerAssignment per container (including empty ones)
-            for (ContainerDef cont : containers) {
-                List<ContainerAssignment.BoxPlacement> placements = placementsByContainer.get(cont.id());
-                long usedVolume = 0;
-                long usedWeight = 0;
-                for (ContainerAssignment.BoxPlacement p : placements) {
-                    usedVolume += p.length() * p.width() * p.height();
-                    usedWeight += boxById(p.boxId()).weight();
-                }
-                assignments.add(new ContainerAssignment(
-                        cont.id(), cont.length(), cont.width(), cont.height(), cont.maxWeight(),
-                        List.copyOf(placements), usedVolume, usedWeight));
-            }
-        }
+            OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
+                    ? OptionalDouble.of(v.objectiveValue())
+                    : OptionalDouble.empty();
 
-        OptionalDouble objValue = (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE)
-                ? OptionalDouble.of(solver.objectiveValue())
-                : OptionalDouble.empty();
-
-        return new PackingSolution(status, objValue, runtime, assignments, unassignedBoxes);
+            return new PackingSolution(status, objValue, runtime, assignments, unassignedBoxes);
+        };
+        return params.solve(model, extract, listener);
     }
 
     /**
@@ -530,6 +517,31 @@ public final class CpSatPackingSolver {
         } else {
             // pair (j, i): above[j][i] = j above i.
             return above[j][i][b];
+        }
+    }
+
+    /** Hints container, origin, and orientation for every box placed in a previous solution. */
+    private void applyWarmStart(CpModel model, BoolVar[][] x, IntVar[][] sx, IntVar[][] sy, IntVar[][] sz,
+                                List<BoolVar>[][] orientLits, List<Orientation>[][] fittingOrients) {
+        for (ContainerAssignment prevCont : warmStart.assignments()) {
+            int b = -1;
+            for (int k = 0; k < containers.size(); k++) if (containers.get(k).id().equals(prevCont.containerId())) b = k;
+            if (b < 0) continue;
+            for (ContainerAssignment.BoxPlacement p : prevCont.boxes()) {
+                int i = -1;
+                for (int k = 0; k < boxes.size(); k++) if (boxes.get(k).id().equals(p.boxId())) i = k;
+                if (i < 0 || sx[i][b] == null) continue;
+                for (int bb = 0; bb < containers.size(); bb++) model.addHint(x[i][bb], bb == b ? 1 : 0);
+                model.addHint(sx[i][b], p.x());
+                model.addHint(sy[i][b], p.y());
+                model.addHint(sz[i][b], p.z());
+                if (p.orientation() != null && orientLits[i][b] != null) {
+                    List<Orientation> fitting = fittingOrients[i][b];
+                    for (int k = 0; k < fitting.size(); k++) {
+                        model.addHint(orientLits[i][b].get(k), fitting.get(k).equals(p.orientation()) ? 1 : 0);
+                    }
+                }
+            }
         }
     }
 

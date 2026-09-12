@@ -1,14 +1,14 @@
 package opt.jobshop;
 
 import opt.ModelException;
-import opt.OptimizationProblem;
-import opt.Solver;
+import opt.CpSatProblem;
+import opt.CpSatSolver;
+import opt.internal.AbstractCpSatSolver;
 import opt.internal.Validate;
 import opt.jobshop.internal.CpSatJobShopSolver;
 import opt.jobshop.internal.JobDef;
 import opt.jobshop.internal.SetupMatrix;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /** Fluent builder for job shop problems. Entry point: {@code Optimize.jobShop()}. */
-public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule> {
+public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
 
     private final Set<String> machines = new LinkedHashSet<>();
     private final List<JobDef> jobs = new ArrayList<>();
@@ -128,14 +128,14 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
     }
 
     /** Builds an immutable, reusable problem instance. */
-    public OptimizationProblem<JobShopSchedule> build() {
+    public CpSatProblem<JobShopSchedule> build() {
         SetupMatrix matrix = buildSetupMatrix();
         return new JobShopProblem(List.copyOf(machines), List.copyOf(jobs), matrix, goal);
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
     @Override
-    public Solver<JobShopSchedule> solver() {
+    public CpSatSolver<JobShopSchedule> solver() {
         return build().solver();
     }
 
@@ -208,7 +208,7 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
 
     // ── Problem + Solver ────────────────────────────────────────────────────
 
-    private static final class JobShopProblem implements OptimizationProblem<JobShopSchedule> {
+    private static final class JobShopProblem implements CpSatProblem<JobShopSchedule> {
 
         private final List<String> machines;
         private final List<JobDef> jobs;
@@ -223,21 +223,17 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
         }
 
         @Override
-        public Solver<JobShopSchedule> solver() {
+        public CpSatSolver<JobShopSchedule> solver() {
             return new JobShopSolver(machines, jobs, setupMatrix, goal);
         }
     }
 
-    private static final class JobShopSolver implements Solver<JobShopSchedule> {
+    private static final class JobShopSolver extends AbstractCpSatSolver<JobShopSchedule> {
 
         private final List<String> machines;
         private final List<JobDef> jobs;
         private final SetupMatrix setupMatrix;
         private final JobShopGoal goal;
-        private Duration timeLimit = Duration.ofMinutes(1);
-        private int workers = 1;
-        private long seed = 0;
-        private boolean verbose = false;
 
         JobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal) {
             this.machines = machines;
@@ -246,19 +242,9 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
             this.goal = goal;
         }
 
-        @Override public Solver<JobShopSchedule> timeLimit(Duration limit) { timeLimit = limit; return this; }
-        @Override public Solver<JobShopSchedule> workers(int threads)       { workers = threads;  return this; }
-        @Override public Solver<JobShopSchedule> seed(long randomSeed)      { seed = randomSeed;  return this; }
-        @Override public Solver<JobShopSchedule> verbose(boolean log)       { verbose = log;      return this; }
-
         @Override
         public JobShopSchedule solve() {
-            return new CpSatJobShopSolver(machines, jobs, setupMatrix, goal)
-                    .timeLimit(timeLimit)
-                    .workers(workers)
-                    .seed(seed)
-                    .verbose(verbose)
-                    .solve();
+            return new CpSatJobShopSolver(machines, jobs, setupMatrix, goal, params, listener, warmStart).solve();
         }
     }
 }
