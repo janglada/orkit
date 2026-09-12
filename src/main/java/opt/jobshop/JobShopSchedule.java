@@ -16,19 +16,22 @@ public final class JobShopSchedule implements Solution {
     private final long makespan;
     private final List<String> machines;
     private final List<ScheduledOperation> operations;
+    private final Map<String, Long> tardinessByJob;
 
     /**
      * Constructs a solved schedule. Normally not called directly by users;
      * instances are produced by {@link opt.Solver#solve()}.
      */
     public JobShopSchedule(SolveStatus status, OptionalDouble objective, Duration runtime,
-                           long makespan, List<String> machines, List<ScheduledOperation> operations) {
+                           long makespan, List<String> machines, List<ScheduledOperation> operations,
+                           Map<String, Long> tardinessByJob) {
         this.status = status;
         this.objective = objective;
         this.runtime = runtime;
         this.makespan = makespan;
         this.machines = Collections.unmodifiableList(machines);
         this.operations = Collections.unmodifiableList(operations);
+        this.tardinessByJob = Collections.unmodifiableMap(new LinkedHashMap<>(tardinessByJob));
     }
 
     /** Returns the solver status for this solution. */
@@ -62,6 +65,20 @@ public final class JobShopSchedule implements Solution {
                 .filter(op -> op.job().equals(job))
                 .sorted(Comparator.comparingInt(ScheduledOperation::index))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Sum of {@code max(0, end - due)} over this job's operations that carry a due date, in
+     * model time units; {@code 0} for a job without due dates, an unknown job, or no solution.
+     * Reported regardless of the goal.
+     */
+    public long tardinessOf(String job) {
+        return tardinessByJob.getOrDefault(job, 0L);
+    }
+
+    /** Sum of {@link #tardinessOf(String)} over all jobs (unweighted). */
+    public long totalTardiness() {
+        return tardinessByJob.values().stream().mapToLong(Long::longValue).sum();
     }
 
     /** Builds a {@link Gantt} view of this schedule grouped by machine. */

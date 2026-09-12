@@ -1080,4 +1080,172 @@ class JobShopTest {
         assertThat(op.end()).isLessThanOrEqualTo(20);      // deadline
         assertThat(op.end() - op.start()).isEqualTo(5);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Downtime, job weights, max lag / no-wait, tardiness reporting
+    // ══════════════════════════════════════════════════════════════════════════
+
+    private static ScheduledOperation op(JobShopSchedule s, String job, int index) {
+        return s.operationsOf(job).get(index);
+    }
+
+    // ── T-J55: downtime pushes an operation that cannot fit before it ───────
+
+    @Test
+    void downtimePushesOperationPastWindow() {
+        JobShopSchedule s = Optimize.jobShop().machines("M1")
+                .downtime("M1", 2, 6)
+                .job("J1", j -> j.operation().on("M1").takes(5))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(s.isOptimal()).isTrue();
+        assertThat(op(s, "J1", 0).start()).isEqualTo(6);   // 0..5 would overlap [2,6)
+        assertThat(s.makespan()).isEqualTo(11);
+    }
+
+    // ── T-J56: downtime is respected on a machine using the setup circuit ────
+
+    @Test
+    void downtimeWithSetupCircuitRespected() {
+        JobShopSchedule s = Optimize.jobShop().machines("M1")
+                .setupTime("A", "B", 2).setupTime("B", "A", 2)
+                .downtime("M1", 3, 8)
+                .job("J1", j -> j.operation().on("M1").type("A").takes(2))
+                .job("J2", j -> j.operation().on("M1").type("B").takes(2))
+                .job("J3", j -> j.operation().on("M1").type("A").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(s.isFeasible()).isTrue();
+        for (ScheduledOperation o : s.timelineOf("M1")) {
+            boolean overlaps = o.start() < 8 && o.end() > 3;
+            assertThat(overlaps).as("%s overlaps downtime [3,8)", o).isFalse();
+        }
+    }
+
+    // ── T-J57: downtime validation ──────────────────────────────────────────
+
+    @Test
+    void downtimeValidation() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1").downtime("M1", 10, 5))
+                .isInstanceOf(ModelException.class).hasMessageContaining("from must be < to");
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1").downtime("M9", 0, 5)
+                .job("J1", j -> j.operation().on("M1").takes(1)).solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("unknown machine 'M9'");
+    }
+
+    // ── T-J58: overlapping downtimes are merged rather than made self-infeasible ──
+
+    @Test
+    void overlappingDowntimesAreMerged() {
+        JobShopSchedule s = Optimize.jobShop().machines("M1")
+                .downtime("M1", 0, 5).downtime("M1", 3, 8)
+                .job("J1", j -> j.operation().on("M1").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(s.isOptimal()).isTrue();
+        assertThat(op(s, "J1", 0).start()).isEqualTo(8);
+    }
+
+    // ── T-J59: a heavier job is served first under a tardiness goal ─────────
+
+    @Test
+    void heavierJobIsPrioritizedUnderTardiness() {
+        JobShopSchedule s = Optimize.jobShop().machines("M1")
+                .goal(Goals.minimizeTardiness(1))
+                .job("light", j -> j.weight(1).operation().on("M1").takes(5).dueBy(5))
+                .job("heavy", j -> j.weight(10).operation().on("M1").takes(5).dueBy(5))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(s.isOptimal()).isTrue();
+        assertThat(op(s, "heavy", 0).start()).isEqualTo(0);
+        assertThat(op(s, "light", 0).start()).isEqualTo(5);
+        assertThat(s.objective()).hasValue(5.0);           // light is 5 late, weight 1
+        assertThat(s.tardinessOf("light")).isEqualTo(5);
+        assertThat(s.tardinessOf("heavy")).isEqualTo(0);
+    }
+
+    // ── T-J60: weighted completion time orders by weight over duration ──────
+
+    @Test
+    void weightedCompletionTimeOrdersByWeightOverDuration() {
+        JobShopSchedule plain = Optimize.jobShop().machines("M1")
+                .goal(Goals.minimizeWeightedCompletionTime())
+                .job("long", j -> j.operation().on("M1").takes(10))
+                .job("short", j -> j.operation().on("M1").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(op(plain, "short", 0).start()).isEqualTo(0);       // shortest first: 2 + 12 = 14
+        assertThat(plain.objective()).hasValue(14.0);
+
+        JobShopSchedule weighted = Optimize.jobShop().machines("M1")
+                .goal(Goals.minimizeWeightedCompletionTime())
+                .job("long", j -> j.weight(10).operation().on("M1").takes(10))
+                .job("short", j -> j.operation().on("M1").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(op(weighted, "long", 0).start()).isEqualTo(0);     // 10*10 + 12 = 112 < 2 + 10*12 = 122
+        assertThat(weighted.objective()).hasValue(112.0);
+    }
+
+    // ── T-J61: non-positive job weight is rejected ──────────────────────────
+
+    @Test
+    void zeroWeightThrows() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.weight(0).operation().on("M1").takes(1)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("job weight");
+    }
+
+    // ── T-J62: noWait forces contiguous operations ──────────────────────────
+
+    @Test
+    void noWaitForcesContiguousOperations() {
+        JobShopSchedule s = Optimize.jobShop().machines("M1", "M2")
+                .job("J1", j -> j.noWait().operation().on("M1").takes(3).then().on("M2").takes(4))
+                .job("J2", j -> j.noWait().operation().on("M2").takes(5).then().on("M1").takes(2))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(s.isFeasible()).isTrue();
+        for (String job : List.of("J1", "J2")) {
+            assertThat(op(s, job, 1).start()).as("%s must not wait", job).isEqualTo(op(s, job, 0).end());
+        }
+    }
+
+    // ── T-J63: maxLag bounds the gap, job-level and per operation ───────────
+
+    @Test
+    void maxLagBoundsGap() {
+        JobShopSchedule s = Optimize.jobShop().machines("M1", "M2")
+                .job("J1", j -> j.maxLag(3).operation().on("M1").takes(3).then().on("M2").takes(4))
+                .job("J2", j -> j.operation().on("M2").takes(5).then().on("M1").takes(2).maxLagAfterPrevious(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(s.isFeasible()).isTrue();
+        assertThat(op(s, "J1", 1).start() - op(s, "J1", 0).end()).isBetween(0L, 3L);
+        assertThat(op(s, "J2", 1).start() - op(s, "J2", 0).end()).isBetween(0L, 1L);
+    }
+
+    // ── T-J64: a lag override on the first operation is rejected ────────────
+
+    @Test
+    void maxLagOnFirstOperationThrows() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(1).maxLagAfterPrevious(2)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("first operation");
+    }
+
+    // ── T-J65/66: tardiness is reported regardless of the goal ──────────────
+
+    @Test
+    void tardinessOfMatchesEndMinusDue() {
+        JobShopSchedule s = Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(5).dueBy(3))   // default makespan goal
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(s.tardinessOf("J1")).isEqualTo(2);
+        assertThat(s.tardinessOf("nope")).isEqualTo(0);
+        assertThat(s.totalTardiness()).isEqualTo(2);
+    }
+
+    @Test
+    void totalTardinessIsSumAcrossJobs() {
+        JobShopSchedule s = Optimize.jobShop().machines("M1", "M2")
+                .job("J1", j -> j.operation().on("M1").takes(5).dueBy(3))
+                .job("J2", j -> j.operation().on("M2").takes(7).dueBy(4))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(s.tardinessOf("J1")).isEqualTo(2);
+        assertThat(s.tardinessOf("J2")).isEqualTo(3);
+        assertThat(s.totalTardiness()).isEqualTo(5);
+    }
 }

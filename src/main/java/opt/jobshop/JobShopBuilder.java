@@ -7,6 +7,7 @@ import opt.CpSatSolver;
 import opt.internal.AbstractCpSatSolver;
 import opt.internal.Validate;
 import opt.jobshop.internal.CpSatJobShopSolver;
+import opt.jobshop.internal.DowntimeDef;
 import opt.jobshop.internal.JobDef;
 import opt.jobshop.internal.SetupMatrix;
 
@@ -34,6 +35,7 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
     private int defaultSetupTime = 0;
     // initialTypes: (machine -> type)
     private final Map<String, String> initialTypes = new LinkedHashMap<>();
+    private final List<DowntimeDef> downtimes = new ArrayList<>();
 
     // Objective — default minimizes makespan; release/deadline/due are set per operation.
     private JobShopGoal goal = new JobShopGoal.MinimizeMakespan();
@@ -62,7 +64,7 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
         if (cfg.committed.isEmpty()) {
             throw new ModelException("Job '" + id + "' must have at least one operation.");
         }
-        jobs.add(new JobDef(id, List.copyOf(cfg.committed)));
+        jobs.add(new JobDef(id, List.copyOf(cfg.committed), cfg.weight));
         return this;
     }
 
@@ -117,6 +119,21 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
     }
 
     /**
+     * Declares that {@code machine} is unavailable during {@code [from, to)} (maintenance, a
+     * shift break). Repeatable; overlapping windows on one machine are merged. Operations are
+     * non-preemptive, so none may straddle a downtime window.
+     */
+    public JobShopBuilder downtime(String machine, long from, long to) {
+        Validate.nonBlank(machine, "machine");
+        Validate.nonNegative(from, "downtime from");
+        if (from >= to) {
+            throw new ModelException("downtime('" + machine + "', " + from + ", " + to + "): from must be < to.");
+        }
+        downtimes.add(new DowntimeDef(machine, from, to));
+        return this;
+    }
+
+    /**
      * Sets the optimization objective. The default {@link Goals#minimizeMakespan()}
      * preserves historical behavior. Use {@link Goals#minimizeTardiness(long)} or
      * {@link Goals#minimizeMakespanAndTardiness(long, long)} to penalize soft due
@@ -132,7 +149,7 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
     public CpSatProblem<JobShopSchedule> build() {
         SetupMatrix matrix = buildSetupMatrix();
         return new JobShopProblem(List.copyOf(machines), List.copyOf(jobs), matrix, goal,
-                collectUnusedTypeWarnings(matrix));
+                mergedDowntimes(), collectUnusedTypeWarnings(matrix));
     }
 
     /** Diagnostics for the model as currently declared; see {@link OptimizationProblem#warnings()}. */
@@ -170,6 +187,33 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
                 Map.copyOf(initialTypes));
 
         return matrix;
+    }
+
+    /** Validates downtime machines and merges overlapping or touching windows per machine. */
+    private List<DowntimeDef> mergedDowntimes() {
+        Map<String, List<DowntimeDef>> byMachine = new LinkedHashMap<>();
+        for (DowntimeDef d : downtimes) {
+            if (!machines.contains(d.machine())) {
+                throw new ModelException("downtime references unknown machine '" + d.machine() + "'.");
+            }
+            byMachine.computeIfAbsent(d.machine(), k -> new ArrayList<>()).add(d);
+        }
+        List<DowntimeDef> out = new ArrayList<>();
+        for (var e : byMachine.entrySet()) {
+            List<DowntimeDef> sorted = new ArrayList<>(e.getValue());
+            sorted.sort(java.util.Comparator.comparingLong(DowntimeDef::from));
+            DowntimeDef current = null;
+            for (DowntimeDef d : sorted) {
+                if (current != null && d.from() <= current.to()) {
+                    current = new DowntimeDef(current.machine(), current.from(), Math.max(current.to(), d.to()));
+                } else {
+                    if (current != null) out.add(current);
+                    current = d;
+                }
+            }
+            if (current != null) out.add(current);
+        }
+        return List.copyOf(out);
     }
 
     private List<String> collectUnusedTypeWarnings(SetupMatrix matrix) {
@@ -221,14 +265,16 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
         private final List<JobDef> jobs;
         private final SetupMatrix setupMatrix;
         private final JobShopGoal goal;
+        private final List<DowntimeDef> downtimes;
         private final List<String> warnings;
 
         JobShopProblem(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal,
-                       List<String> warnings) {
+                       List<DowntimeDef> downtimes, List<String> warnings) {
             this.machines = machines;
             this.jobs = jobs;
             this.setupMatrix = setupMatrix;
             this.goal = goal;
+            this.downtimes = downtimes;
             this.warnings = warnings;
         }
 
@@ -239,7 +285,7 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
 
         @Override
         public CpSatSolver<JobShopSchedule> solver() {
-            return new JobShopSolver(machines, jobs, setupMatrix, goal);
+            return new JobShopSolver(machines, jobs, setupMatrix, goal, downtimes);
         }
     }
 
@@ -249,17 +295,20 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
         private final List<JobDef> jobs;
         private final SetupMatrix setupMatrix;
         private final JobShopGoal goal;
+        private final List<DowntimeDef> downtimes;
 
-        JobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal) {
+        JobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal,
+                      List<DowntimeDef> downtimes) {
             this.machines = machines;
             this.jobs = jobs;
             this.setupMatrix = setupMatrix;
             this.goal = goal;
+            this.downtimes = downtimes;
         }
 
         @Override
         public JobShopSchedule solve() {
-            return new CpSatJobShopSolver(machines, jobs, setupMatrix, goal, params, listener, warmStart).solve();
+            return new CpSatJobShopSolver(machines, jobs, setupMatrix, goal, downtimes, params, listener, warmStart).solve();
         }
     }
 }

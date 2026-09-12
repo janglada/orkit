@@ -9,8 +9,8 @@ public final class Goals {
     }
 
     /**
-     * Returns the goal of minimizing {@code weight} times the total operation
-     * tardiness ({@code sum(max(0, end - due))} over operations with a due date).
+     * Returns the goal of minimizing {@code weight} times the total job-weighted operation
+     * tardiness ({@code sum(jobWeight * max(0, end - due))} over operations with a due date).
      *
      * @param weight per-unit-time tardiness penalty; must be {@code > 0}.
      */
@@ -20,10 +20,19 @@ public final class Goals {
 
     /**
      * Returns the combined goal minimizing
-     * {@code makespanWeight * makespan + tardinessWeight * totalTardiness}.
+     * {@code makespanWeight * makespan + tardinessWeight * totalWeightedTardiness}.
      */
     public static JobShopGoal minimizeMakespanAndTardiness(long makespanWeight, long tardinessWeight) {
         return new JobShopGoal.MinimizeMakespanAndTardiness(makespanWeight, tardinessWeight);
+    }
+
+    /**
+     * Returns the goal of minimizing the sum over jobs of {@link JobConfig#weight(long) weight}
+     * times completion time (end of the job's last operation). Favors finishing important or
+     * short jobs early.
+     */
+    public static JobShopGoal minimizeWeightedCompletionTime() {
+        return new JobShopGoal.MinimizeWeightedCompletionTime();
     }
 
     private Goals() {}

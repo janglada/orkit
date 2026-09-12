@@ -1,6 +1,7 @@
 package opt.jobshop;
 
 import opt.ModelException;
+import opt.internal.Validate;
 import opt.jobshop.internal.OperationDef;
 
 import java.util.ArrayList;
@@ -14,8 +15,37 @@ public final class JobConfig {
 
     final List<OperationDef> committed = new ArrayList<>();
     OperationConfig activeOp;
+    long weight = 1;
+    Long defaultMaxLag;
 
     JobConfig() {}
+
+    /**
+     * Sets this job's relative importance (default 1). Multiplies the job's tardiness terms
+     * under tardiness goals and its completion time under
+     * {@link Goals#minimizeWeightedCompletionTime()}.
+     */
+    public JobConfig weight(long weight) {
+        Validate.positive(weight, "job weight");
+        this.weight = weight;
+        return this;
+    }
+
+    /**
+     * Caps the idle time between consecutive operations of this job: each operation must
+     * start within {@code lag} time units after its predecessor ends. Overridable per
+     * operation with {@link OperationConfig#maxLagAfterPrevious(long)}.
+     */
+    public JobConfig maxLag(long lag) {
+        Validate.nonNegative(lag, "maxLag");
+        this.defaultMaxLag = lag;
+        return this;
+    }
+
+    /** No idle time between consecutive operations of this job; alias of {@code maxLag(0)}. */
+    public JobConfig noWait() {
+        return maxLag(0);
+    }
 
     /**
      * Starts the first operation of this job. Subsequent operations are added with
@@ -48,8 +78,12 @@ public final class JobConfig {
                             + ") exceeds deadline (" + deadline
                             + "); the operation cannot fit in its time window.");
         }
+        Long lag = op.maxLagAfterPrevious() != null ? op.maxLagAfterPrevious() : defaultMaxLag;
+        if (op.maxLagAfterPrevious() != null && committed.isEmpty()) {
+            throw new ModelException("maxLagAfterPrevious() is not allowed on the first operation of a job.");
+        }
         committed.add(new OperationDef(committed.size(), op.machines(), op.duration(), op.type(),
-                release, deadline, op.dueTime()));
+                release, deadline, op.dueTime(), committed.isEmpty() ? null : lag));
     }
 
     /** Called by the builder after the lambda returns to commit the last pending operation. */

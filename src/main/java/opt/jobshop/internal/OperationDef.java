@@ -2,22 +2,28 @@ package opt.jobshop.internal;
 
 import java.util.List;
 
-/** Internal definition of a single operation within a job. */
+/**
+ * Internal definition of a single operation within a job.
+ *
+ * @param index               position of this operation within its job's ordered sequence
+ * @param machines            single machine, or multiple candidates for flexible job shop
+ * @param duration            processing duration in model time units
+ * @param type                setup type tag used for sequence-dependent changeover; {@code null} if untyped
+ * @param releaseTime         earliest start time (release date); {@code null} if unconstrained
+ * @param deadline            latest end time (hard deadline); {@code null} if unconstrained
+ * @param dueTime             soft due date for tardiness penalties; {@code null} if unconstrained
+ * @param maxLagAfterPrevious maximum idle time allowed between the previous operation's end and this
+ *                            one's start; {@code null} for unbounded, {@code 0} for no-wait
+ */
 public record OperationDef(
-        /** Position of this operation within its job's ordered sequence. */
         int index,
-        /** Single machine, or multiple candidates for flexible job shop. */
         List<String> machines,
-        /** Processing duration in model time units. */
         int duration,
-        /** Setup type tag used for sequence-dependent changeover; {@code null} if untyped. */
         String type,
-        /** Earliest start time (release date); {@code null} if unconstrained. */
         Long releaseTime,
-        /** Latest end time (hard deadline); {@code null} if unconstrained. */
         Long deadline,
-        /** Soft due date for tardiness penalties (compared against this op's end); {@code null} if unconstrained. */
-        Long dueTime
+        Long dueTime,
+        Long maxLagAfterPrevious
 ) {
     /** Returns {@code true} if this operation may run on more than one candidate machine. */
     public boolean isFlexible() {

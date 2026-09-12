@@ -19,6 +19,7 @@ public final class CpSatJobShopSolver {
     private final List<JobDef> jobs;
     private final SetupMatrix setupMatrix;
     private final JobShopGoal goal;
+    private final List<DowntimeDef> downtimes;
     private final CpSatParams params;
     private final Consumer<JobShopSchedule> listener;
     private final JobShopSchedule warmStart;
@@ -39,11 +40,13 @@ public final class CpSatJobShopSolver {
 
     /** Creates a solver for the given machines, jobs, setup matrix, and objective. Internal; obtain via {@link opt.jobshop.JobShopBuilder#solver()}. */
     public CpSatJobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal,
+                              List<DowntimeDef> downtimes,
                               CpSatParams params, Consumer<JobShopSchedule> listener, JobShopSchedule warmStart) {
         this.machines = List.copyOf(machines);
         this.jobs = List.copyOf(jobs);
         this.setupMatrix = (setupMatrix == null) ? SetupMatrix.empty() : setupMatrix;
         this.goal = (goal == null) ? new JobShopGoal.MinimizeMakespan() : goal;
+        this.downtimes = (downtimes == null) ? List.of() : List.copyOf(downtimes);
         this.params = (params == null) ? new CpSatParams() : params;
         this.listener = listener;
         this.warmStart = warmStart;
@@ -80,13 +83,17 @@ public final class CpSatJobShopSolver {
                 .mapToLong(op -> op.deadline() == null ? 0 : op.deadline())
                 .max()
                 .orElse(0);
-        long horizon = Math.max(computedHorizon + maxRelease, maxDeadline);
+        // Downtime: in the worst case all work runs after the last window ends, so widening
+        // by the latest downtime end always leaves room for an optimal schedule.
+        long maxDowntimeEnd = downtimes.stream().mapToLong(DowntimeDef::to).max().orElse(0);
+        long horizon = Math.max(computedHorizon + maxRelease + maxDowntimeEnd, maxDeadline);
 
         CpModel model = new CpModel();
 
         List<List<OpIntervals>> allIntervals = new ArrayList<>();
-        // Tardiness variables for operations carrying a soft due date (see objective dispatch).
-        List<IntVar> tardinessVars = new ArrayList<>();
+        // Tardiness variables for operations carrying a soft due date, with their job's weight
+        // (see objective dispatch).
+        List<WeightedTerm> tardinessTerms = new ArrayList<>();
 
         for (JobDef job : jobs) {
             List<OpIntervals> jobIntervals = new ArrayList<>();
@@ -107,7 +114,7 @@ public final class CpSatJobShopSolver {
                     // tardiness >= end - due  (and >= 0 from the domain); minimizing
                     // tardiness drives it to max(0, end - due).
                     model.addGreaterOrEqual(tardiness, LinearExpr.affine(end, 1, -op.dueTime()));
-                    tardinessVars.add(tardiness);
+                    tardinessTerms.add(new WeightedTerm(tardiness, job.weight()));
                 }
 
                 if (!op.isFlexible()) {
@@ -133,12 +140,26 @@ public final class CpSatJobShopSolver {
             allIntervals.add(jobIntervals);
         }
 
-        // Precedence constraints within each job
+        // Precedence constraints within each job, plus the optional maximum lag
+        // (start[o+1] <= end[o] + lag; lag 0 is no-wait).
         for (int j = 0; j < jobs.size(); j++) {
             List<OpIntervals> jobOps = allIntervals.get(j);
+            List<OperationDef> ops = jobs.get(j).operations();
             for (int o = 0; o < jobOps.size() - 1; o++) {
                 model.addLessOrEqual(jobOps.get(o).end(), jobOps.get(o + 1).start());
+                Long lag = ops.get(o + 1).maxLagAfterPrevious();
+                if (lag != null) {
+                    model.addLessOrEqual(jobOps.get(o + 1).start(), LinearExpr.affine(jobOps.get(o).end(), 1, lag));
+                }
             }
+        }
+
+        // Machine downtime: fixed intervals no operation may overlap.
+        Map<String, List<IntervalVar>> downtimeIntervals = new LinkedHashMap<>();
+        for (DowntimeDef d : downtimes) {
+            downtimeIntervals.computeIfAbsent(d.machine(), k -> new ArrayList<>())
+                    .add(model.newFixedInterval(d.from(), d.to() - d.from(),
+                            "down_" + d.machine() + "_" + d.from()));
         }
 
         // Per-machine sequencing: NoOverlap by default, or a setup-aware circuit
@@ -158,10 +179,15 @@ public final class CpSatJobShopSolver {
             }
             if (slots.isEmpty()) continue;
 
+            List<IntervalVar> down = downtimeIntervals.getOrDefault(machine, List.of());
             if (setupMatrix.isEmpty() || !machineHasSetup(machine, slots)) {
-                addNoOverlap(model, machine, slots, allIntervals);
+                addNoOverlap(model, machine, slots, allIntervals, down);
             } else {
                 addSetupCircuit(model, machine, slots, allIntervals);
+                // The circuit sequences operations among themselves; a plain NoOverlap with the
+                // fixed downtime intervals keeps them clear of the windows without having to
+                // encode downtime as circuit nodes with two-sided setup semantics.
+                if (!down.isEmpty()) addNoOverlap(model, machine, slots, allIntervals, down);
             }
         }
 
@@ -181,11 +207,17 @@ public final class CpSatJobShopSolver {
             case JobShopGoal.MinimizeMakespan ignored ->
                     obj.addTerm(makespan, 1);
             case JobShopGoal.MinimizeTardiness t -> {
-                for (IntVar tard : tardinessVars) obj.addTerm(tard, t.weight());
+                for (WeightedTerm term : tardinessTerms) obj.addTerm(term.var(), t.weight() * term.weight());
             }
             case JobShopGoal.MinimizeMakespanAndTardiness mt -> {
                 obj.addTerm(makespan, mt.makespanWeight());
-                for (IntVar tard : tardinessVars) obj.addTerm(tard, mt.tardinessWeight());
+                for (WeightedTerm term : tardinessTerms) obj.addTerm(term.var(), mt.tardinessWeight() * term.weight());
+            }
+            case JobShopGoal.MinimizeWeightedCompletionTime ignored -> {
+                for (int j = 0; j < jobs.size(); j++) {
+                    List<OpIntervals> jobOps = allIntervals.get(j);
+                    obj.addTerm(jobOps.get(jobOps.size() - 1).end(), jobs.get(j).weight());
+                }
             }
             case null, default -> throw new ModelException("Unsupported job-shop goal: " + goal);
         }
@@ -196,6 +228,7 @@ public final class CpSatJobShopSolver {
         CpSatParams.Extractor<JobShopSchedule> extract = (v, status, runtime) -> {
             long makespanValue = 0;
             List<ScheduledOperation> operations = new ArrayList<>();
+            Map<String, Long> tardinessByJob = new LinkedHashMap<>();
 
             if (status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE) {
                 makespanValue = v.value(makespan);
@@ -218,6 +251,9 @@ public final class CpSatJobShopSolver {
                             assignedMachine = op.machine();
                         }
                         operations.add(new ScheduledOperation(job.id(), o, assignedMachine, start, end));
+                        if (op.dueTime() != null) {
+                            tardinessByJob.merge(job.id(), Math.max(0, end - op.dueTime()), Long::sum);
+                        }
                     }
                 }
             }
@@ -226,7 +262,7 @@ public final class CpSatJobShopSolver {
                     ? OptionalDouble.of(v.objectiveValue())
                     : OptionalDouble.empty();
 
-            return new JobShopSchedule(status, objValue, runtime, makespanValue, machines, operations);
+            return new JobShopSchedule(status, objValue, runtime, makespanValue, machines, operations, tardinessByJob);
         };
         return params.solve(model, extract, listener);
     }
@@ -249,10 +285,13 @@ public final class CpSatJobShopSolver {
         }
     }
 
-    /** Adds a plain {@code NoOverlap} over this machine's intervals (fixed + optional). */
+    /** A tardiness variable paired with its job's weight. */
+    private record WeightedTerm(IntVar var, long weight) {}
+
+    /** Adds a plain {@code NoOverlap} over this machine's intervals (fixed + optional) and its downtime windows. */
     private void addNoOverlap(CpModel model, String machine, List<int[]> slots,
-                              List<List<OpIntervals>> allIntervals) {
-        List<IntervalVar> machineIntervals = new ArrayList<>();
+                              List<List<OpIntervals>> allIntervals, List<IntervalVar> downtime) {
+        List<IntervalVar> machineIntervals = new ArrayList<>(downtime);
         for (int[] slot : slots) {
             OperationDef op = jobs.get(slot[0]).operations().get(slot[1]);
             OpIntervals iv = allIntervals.get(slot[0]).get(slot[1]);

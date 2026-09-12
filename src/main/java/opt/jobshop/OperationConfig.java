@@ -21,6 +21,7 @@ public final class OperationConfig {
     private Long releaseTime;
     private Long deadline;
     private Long dueTime;
+    private Long maxLagAfterPrevious;
 
     OperationConfig(JobConfig job) {
         this.job = job;
@@ -100,6 +101,17 @@ public final class OperationConfig {
         return this;
     }
 
+    /**
+     * Caps the idle time between the previous operation's end and this operation's start,
+     * overriding the job-level {@link JobConfig#maxLag(long)}. Not allowed on a job's first
+     * operation. {@code 0} means the operation must start exactly when its predecessor ends.
+     */
+    public OperationConfig maxLagAfterPrevious(long lag) {
+        Validate.nonNegative(lag, "maxLagAfterPrevious");
+        this.maxLagAfterPrevious = lag;
+        return this;
+    }
+
     /** Finalizes this operation and returns a new one for the next step in the job. */
     public OperationConfig then() {
         job.commitOperation(this);
@@ -130,5 +142,9 @@ public final class OperationConfig {
 
     Long dueTime() {
         return dueTime;
+    }
+
+    Long maxLagAfterPrevious() {
+        return maxLagAfterPrevious;
     }
 }
