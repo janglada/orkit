@@ -4,6 +4,7 @@ import opt.Solution;
 import opt.SolveStatus;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.OptionalDouble;
@@ -38,7 +39,10 @@ public final class EmployeeRoster implements Solution {
         return assignments;
     }
 
-    /** Returns the ids of all shifts assigned to the given employee. */
+    /**
+     * Returns the ids of all shifts assigned to the given employee, one entry per assignment.
+     * A recurring shift appears once per date the employee works it.
+     */
     public List<String> shiftsFor(String employeeId) {
         return assignments.stream()
                 .filter(a -> a.employee().equals(employeeId))
@@ -46,11 +50,29 @@ public final class EmployeeRoster implements Solution {
                 .collect(Collectors.toList());
     }
 
-    /** Returns the ids of all employees assigned to the given shift. */
+    /**
+     * Returns the ids of all employees assigned to the given shift, across every date it
+     * occurs on. Use {@link #staffOf(String, LocalDate)} for one occurrence.
+     */
     public List<String> staffOf(String shiftId) {
         return assignments.stream()
                 .filter(a -> a.shift().equals(shiftId))
                 .map(ShiftAssignment::employee)
+                .collect(Collectors.toList());
+    }
+
+    /** Returns the ids of the employees assigned to the given shift on the given date. */
+    public List<String> staffOf(String shiftId, LocalDate date) {
+        return assignments.stream()
+                .filter(a -> a.shift().equals(shiftId) && a.date().equals(date))
+                .map(ShiftAssignment::employee)
+                .collect(Collectors.toList());
+    }
+
+    /** Returns every assignment falling on the given date. */
+    public List<ShiftAssignment> assignmentsOn(LocalDate date) {
+        return assignments.stream()
+                .filter(a -> a.date().equals(date))
                 .collect(Collectors.toList());
     }
 }

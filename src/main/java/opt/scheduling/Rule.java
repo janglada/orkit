@@ -5,7 +5,7 @@ import java.time.Duration;
 /** Hard constraint applied to the scheduling model. Create instances via {@link Rules}. */
 public sealed interface Rule
         permits Rule.MinRestBetweenShifts, Rule.MaxConsecutiveWorkDays, Rule.OneShiftPerEmployeePerDay,
-                  Rule.MaxShiftsPerWeek, Rule.MaxConsecutiveNightShifts {
+                  Rule.MaxShiftsPerWeek, Rule.MaxConsecutiveNightShifts, Rule.ForbidSequence {
 
     /** Minimum rest gap that must separate any two shifts worked by the same employee.
      *  @param minRest minimum duration between the end of one shift and the start of the next */
@@ -28,4 +28,13 @@ public sealed interface Rule
      * @param maxNights maximum number of consecutive night shifts; must be >= 0
      */
     record MaxConsecutiveNightShifts(int maxNights) implements Rule {}
+
+    /**
+     * Forbids an employee from working a shift of {@code toCategory} on the calendar day right
+     * after a shift of {@code fromCategory}, whatever the clock times. Categories are set with
+     * {@link ShiftConfig#category(String)}.
+     * @param fromCategory category of the earlier shift
+     * @param toCategory   category forbidden on the following day
+     */
+    record ForbidSequence(String fromCategory, String toCategory) implements Rule {}
 }

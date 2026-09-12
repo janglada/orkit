@@ -23,6 +23,21 @@ public final class Goals {
         return new SoftGoal.HonorEmployeePreferences(rewardWeight);
     }
 
+    /**
+     * Creates a {@link SoftGoal} that penalizes each employee missing below a shift's
+     * {@link ShiftConfig#needs(int) target} (down to its {@link ShiftConfig#needsAtLeast(int) minimum})
+     * using the default weight. Applied automatically, with the default weight, whenever a shift
+     * declares {@code needsAtLeast} and this goal is absent.
+     */
+    public static SoftGoal penalizeUnderstaffing() {
+        return new SoftGoal.PenalizeUnderstaffing();
+    }
+
+    /** Creates a {@link SoftGoal} that penalizes each missing employee on soft-staffed shifts with the given weight. */
+    public static SoftGoal penalizeUnderstaffing(long weightPerMissingEmployee) {
+        return new SoftGoal.PenalizeUnderstaffing(weightPerMissingEmployee);
+    }
+
     /** Creates the {@link SchedulingGoal} that minimizes total scheduled labor cost. */
     public static SchedulingGoal totalLaborCost() {
         return new SchedulingGoal.MinimizeTotalLaborCost();

@@ -1,37 +1,60 @@
 package opt.scheduling;
 
 import opt.ModelException;
+import opt.internal.Validate;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.Set;
 
-/** Fluent configurator for a shift, used inside the lambda passed to
- *  {@link SchedulingBuilder#shift(String, java.util.function.Consumer)}. */
+/**
+ * Fluent configurator for a shift, used inside the lambda passed to
+ * {@link SchedulingBuilder#shift(String, java.util.function.Consumer)}.
+ * <p>
+ * A shift is placed either on one concrete date ({@link #on(LocalDate)}) or on a weekly
+ * recurrence ({@link #every(DayOfWeek...)}, {@link #daily()}). A recurring shift is expanded
+ * into one instance per matching date in the horizon; every instance shares the declared id
+ * and is told apart by its {@link ShiftAssignment#date() date}.
+ */
 public final class ShiftConfig {
 
     String id;
-    DayOfWeek day;
+    final Set<DayOfWeek> days = EnumSet.noneOf(DayOfWeek.class);
+    boolean daily = false;
     LocalDate specificDate;
     LocalTime from;
     LocalTime to;
     int needsCount = 1;
+    int minCount = -1;   // -1 = same as needsCount (hard staffing)
     String requiredSkill;
+    String category;
 
     ShiftConfig() {}
 
-    /**
-     * Places the shift on the first date in the horizon whose day-of-week matches.
-     * For recurring weekly shifts across a multi-week horizon, define one shift per
-     * occurrence or use {@link #on(LocalDate)} to target a specific calendar date.
-     */
-    public ShiftConfig on(DayOfWeek day) {
-        this.day = day;
+    /** Repeats the shift on every listed weekday within the horizon. */
+    public ShiftConfig every(DayOfWeek... days) {
+        if (days == null || days.length == 0) throw new ModelException("every() requires at least one day.");
+        this.days.addAll(Arrays.asList(days));
         return this;
+    }
+
+    /** Repeats the shift on every day of the horizon. */
+    public ShiftConfig daily() {
+        this.daily = true;
+        return this;
+    }
+
+    /** Places the shift on every occurrence of {@code day} in the horizon; alias of {@link #every(DayOfWeek...)}. */
+    public ShiftConfig on(DayOfWeek day) {
+        return every(day);
     }
 
     /** Places the shift on a specific calendar date, which must fall within the horizon. */
     public ShiftConfig on(LocalDate date) {
+        if (date == null) throw new ModelException("on(LocalDate) must not be null.");
         this.specificDate = date;
         return this;
     }
@@ -48,16 +71,37 @@ public final class ShiftConfig {
         return this;
     }
 
-    /** Sets how many qualified employees this shift requires. */
+    /**
+     * Sets how many qualified employees this shift requires. This is a hard requirement unless
+     * {@link #needsAtLeast(int)} lowers the floor, in which case it becomes the soft target.
+     */
     public ShiftConfig needs(int count) {
         if (count < 1) throw new ModelException("needs() must be >= 1, got: " + count);
         this.needsCount = count;
         return this;
     }
 
+    /**
+     * Sets a hard minimum head-count below {@link #needs(int)}. Each missing employee between
+     * the minimum and the target is penalized with {@link Goals#penalizeUnderstaffing(long)}
+     * (or its default weight when that goal is not declared).
+     */
+    public ShiftConfig needsAtLeast(int min) {
+        Validate.nonNegative(min, "needsAtLeast()");
+        this.minCount = min;
+        return this;
+    }
+
     /** Requires that any employee assigned to this shift possess the given skill. */
     public ShiftConfig withSkill(String skill) {
         this.requiredSkill = skill;
+        return this;
+    }
+
+    /** Tags the shift with a category (for example "NIGHT", "MORNING") used by {@link Rules#forbidSequence(String, String)}. */
+    public ShiftConfig category(String category) {
+        Validate.nonBlank(category, "category");
+        this.category = category;
         return this;
     }
 }

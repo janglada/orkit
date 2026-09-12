@@ -1,26 +1,33 @@
 package opt.scheduling.internal;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
-/** Immutable description of a shift built by {@link opt.scheduling.ShiftConfig}.
- *  A shift is placed on either a recurring {@link DayOfWeek} or a concrete {@link LocalDate}.
- *  @param id unique shift identifier
- *  @param day recurring day-of-week, or null when {@code specificDate} is set
- *  @param specificDate concrete calendar date, or null when {@code day} is set
- *  @param from shift start time
- *  @param to shift end time; may be before {@code from} to model an overnight shift
- *  @param needsCount number of qualified employees the shift requires
- *  @param requiredSkill skill employees must have, or null for an unskilled shift */
+/**
+ * Immutable description of one shift instance on a concrete date, produced by expanding a
+ * {@link opt.scheduling.ShiftConfig} over the horizon.
+ *
+ * @param id            unique instance id (internal; {@code templateId} for a single-date shift,
+ *                      {@code templateId@date} for a recurring one)
+ * @param templateId    the shift id the user declared; reported in {@link opt.scheduling.ShiftAssignment#shift()}
+ * @param date          the calendar date of this instance
+ * @param from          shift start time
+ * @param to            shift end time; may be before {@code from} to model an overnight shift
+ * @param needsCount    target number of qualified employees
+ * @param minCount      hard minimum number of employees ({@code == needsCount} for hard staffing)
+ * @param requiredSkill skill employees must have, or null for an unskilled shift
+ * @param category      free-form category used by sequence rules, or null
+ */
 public record ShiftDef(
         String id,
-        DayOfWeek day,
-        LocalDate specificDate,
+        String templateId,
+        LocalDate date,
         LocalTime from,
         LocalTime to,
         int needsCount,
-        String requiredSkill
+        int minCount,
+        String requiredSkill,
+        String category
 ) {
     /** Duration in whole minutes. Handles overnight shifts where {@code to} is before {@code from}. */
     public int durationMinutes() {
@@ -32,6 +39,11 @@ public record ShiftDef(
     /** A night shift is one that spans midnight, i.e. {@code to} is strictly before {@code from}. */
     public boolean isNightShift() {
         return to.isBefore(from);
+    }
+
+    /** Whether staffing below {@code needsCount} is allowed (down to {@code minCount}). */
+    public boolean isSoftStaffed() {
+        return minCount < needsCount;
     }
 
     /**
@@ -48,17 +60,5 @@ public record ShiftDef(
      */
     public int absoluteEndMinutes(int dayIndex) {
         return absoluteStartMinutes(dayIndex) + durationMinutes();
-    }
-
-    /** Returns the concrete date for this shift within the given horizon, or null if day not in horizon.
-     *  Note: this returns the first occurrence of {@link #day()} and does not consider {@link #specificDate()}. */
-    public LocalDate dateIn(LocalDate horizonStart, int horizonDays) {
-        for (int i = 0; i < horizonDays; i++) {
-            LocalDate d = horizonStart.plusDays(i);
-            if (d.getDayOfWeek() == day) {
-                return d;
-            }
-        }
-        return null;
     }
 }

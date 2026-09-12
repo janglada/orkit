@@ -1,6 +1,7 @@
 package opt.scheduling;
 
 import opt.ModelException;
+import opt.internal.Validate;
 
 import java.time.Duration;
 
@@ -31,6 +32,19 @@ public final class Rules {
     /** Creates a {@link Rule} capping an employee's consecutive night shifts (those spanning midnight). */
     public static Rule maxConsecutiveNightShifts(int maxNights) {
         return new Rule.MaxConsecutiveNightShifts(maxNights);
+    }
+
+    /**
+     * Creates a {@link Rule} forbidding a {@code toCategory} shift on the day right after a
+     * {@code fromCategory} shift for the same employee (for example no "MORNING" after "NIGHT").
+     * <p>
+     * Unlike {@link #minRestBetweenShifts(Duration)}, which measures the clock gap between two
+     * shifts, this rule is categorical and day-based: it applies whatever the shift times are.
+     */
+    public static Rule forbidSequence(String fromCategory, String toCategory) {
+        Validate.nonBlank(fromCategory, "fromCategory");
+        Validate.nonBlank(toCategory, "toCategory");
+        return new Rule.ForbidSequence(fromCategory, toCategory);
     }
 
     private Rules() {}

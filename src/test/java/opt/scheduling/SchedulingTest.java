@@ -784,7 +784,7 @@ class SchedulingTest {
                 .employee("E", e -> e.skills("RN"))
                 .shift("s", s -> s.on(DayOfWeek.SATURDAY)
                         .from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0)).needs(1).withSkill("RN"))
-                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("does not occur");
+                .solver().solve()).isInstanceOf(ModelException.class).hasMessageContaining("never occurs");
     }
 
     // ── T-S37: Empty employee/shift sets are rejected at solve time ──────────
@@ -864,5 +864,229 @@ class SchedulingTest {
             for (int d = w; d < w + 7; d++) if (worked[d]) count++;
             assertThat(count).as("window starting day %d", w).isLessThanOrEqualTo(3);
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Recurring shifts, locks, forbidden sequences, soft staffing
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // ── T-S40: every() expands to one instance per matching date ───────────
+
+    @Test
+    void everyExpandsToOneInstancePerMatchingDate() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 14)
+                .employee("alice", e -> e.skills("X"))
+                .shift("x", s -> s.every(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY)
+                        .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("X"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(roster.isFeasible()).isTrue();
+        assertThat(roster.assignments()).hasSize(4);
+        assertThat(roster.assignments()).allSatisfy(a -> assertThat(a.shift()).isEqualTo("x"));
+        assertThat(roster.assignments()).extracting(ShiftAssignment::date).containsExactlyInAnyOrder(
+                LocalDate.of(2026, 7, 6), LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 13), LocalDate.of(2026, 7, 15));
+        assertThat(roster.staffOf("x")).hasSize(4);
+        assertThat(roster.staffOf("x", LocalDate.of(2026, 7, 13))).containsExactly("alice");
+        assertThat(roster.assignmentsOn(LocalDate.of(2026, 7, 7))).isEmpty();
+    }
+
+    // ── T-S41: daily() covers every day of the horizon ──────────────────────
+
+    @Test
+    void dailyShiftCoversEveryDay() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.skills("X"))
+                .shift("d", s -> s.daily().from(LocalTime.of(8, 0)).to(LocalTime.of(12, 0)).needs(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(roster.isFeasible()).isTrue();
+        assertThat(roster.assignments()).hasSize(7);
+        assertThat(roster.assignments().stream().map(ShiftAssignment::date).distinct().count()).isEqualTo(7);
+    }
+
+    // ── T-S42: prefersShift matches the declared (template) id ──────────────
+
+    @Test
+    void prefersShiftMatchesTemplateId() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("alice", e -> e.costPerHour(10).prefersShift("night"))
+                .employee("bob",   e -> e.costPerHour(10))
+                .shift("night", s -> s.every(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY)
+                        .from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).needs(1))
+                .prefer(honorEmployeePreferences(1000))
+                .goal(totalLaborCost())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(roster.isFeasible()).isTrue();
+        assertThat(roster.shiftsFor("alice")).hasSize(3);
+        assertThat(roster.shiftsFor("bob")).isEmpty();
+    }
+
+    // ── T-S43: a recurrence that never falls in the horizon is rejected ─────
+
+    @Test
+    void recurringShiftNeverInHorizonThrows() {
+        assertThatThrownBy(() -> Optimize.scheduling()
+                .horizon(MON, 3)
+                .employee("alice", e -> {})
+                .shift("sun", s -> s.every(DayOfWeek.SUNDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(12, 0)))
+                .solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("never occurs");
+    }
+
+    // ── T-S44: assign() forces an employee onto a shift ─────────────────────
+
+    @Test
+    void assignForcesEmployeeOntoShift() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("cheap", e -> e.costPerHour(10))
+                .employee("expensive", e -> e.costPerHour(100))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1))
+                .assign("expensive", "s")
+                .goal(totalLaborCost())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(roster.isFeasible()).isTrue();
+        assertThat(roster.staffOf("s")).containsExactly("expensive");
+    }
+
+    // ── T-S45: forbid() excludes an employee ────────────────────────────────
+
+    @Test
+    void forbidExcludesEmployee() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> e.costPerHour(10))
+                .employee("b", e -> e.costPerHour(100))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1))
+                .forbid("a", "s")
+                .goal(totalLaborCost())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(roster.staffOf("s")).containsExactly("b");
+    }
+
+    // ── T-S46: lock validation ──────────────────────────────────────────────
+
+    @Test
+    void lockValidation() {
+        assertThatThrownBy(() -> Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> e.skills("X"))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).withSkill("RN"))
+                .assign("a", "s").solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("not eligible");
+        assertThatThrownBy(() -> Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> {})
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)))
+                .assign("a", "s").forbid("a", "s").solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("both assigned to and forbidden");
+        assertThatThrownBy(() -> Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> {})
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)))
+                .assign("a", "nope").solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("unknown shift id");
+        assertThatThrownBy(() -> Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> {})
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)))
+                .assign("zed", "s").solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("unknown employee id");
+    }
+
+    // ── T-S47: forbidSequence blocks NIGHT then MORNING for one employee ────
+
+    @Test
+    void forbidSequenceBlocksNightThenMorning() {
+        var single = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> {})
+                .shift("night", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).category("NIGHT"))
+                .shift("morning", s -> s.on(DayOfWeek.TUESDAY).from(LocalTime.of(6, 0)).to(LocalTime.of(14, 0)).category("MORNING"))
+                .constrain(forbidSequence("NIGHT", "MORNING"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(single.status()).isEqualTo(SolveStatus.INFEASIBLE);
+
+        var two = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> {})
+                .employee("b", e -> {})
+                .shift("night", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).category("NIGHT"))
+                .shift("morning", s -> s.on(DayOfWeek.TUESDAY).from(LocalTime.of(6, 0)).to(LocalTime.of(14, 0)).category("MORNING"))
+                .constrain(forbidSequence("NIGHT", "MORNING"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(two.isFeasible()).isTrue();
+        assertThat(two.staffOf("night")).doesNotContainAnyElementsOf(two.staffOf("morning"));
+    }
+
+    // ── T-S48: forbidSequence ignores non-adjacent days ─────────────────────
+
+    @Test
+    void forbidSequenceDoesNotAffectNonAdjacentDays() {
+        var roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> {})
+                .shift("night", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).category("NIGHT"))
+                .shift("morning", s -> s.on(DayOfWeek.WEDNESDAY).from(LocalTime.of(6, 0)).to(LocalTime.of(14, 0)).category("MORNING"))
+                .constrain(forbidSequence("NIGHT", "MORNING"))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(roster.isFeasible()).isTrue();
+        assertThat(roster.shiftsFor("a")).hasSize(2);
+    }
+
+    // ── T-S49: forbidSequence with an undeclared category is rejected ───────
+
+    @Test
+    void forbidSequenceUnknownCategoryThrows() {
+        assertThatThrownBy(() -> Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> {})
+                .shift("night", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(22, 0)).to(LocalTime.of(6, 0)).category("NIGHT"))
+                .constrain(forbidSequence("NIGHT", "MORNING"))
+                .solver())
+                .isInstanceOf(ModelException.class).hasMessageContaining("MORNING");
+    }
+
+    // ── T-S50: understaffing allowed down to the minimum, with the default penalty ──
+
+    @Test
+    void understaffingAllowedDownToMinimum() {
+        EmployeeRoster roster = Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> {})
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(2).needsAtLeast(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        assertThat(roster.isFeasible()).isTrue();
+        assertThat(roster.assignments()).hasSize(1);
+        assertThat(roster.objective()).hasValue((double) SoftGoal.DEFAULT_UNDERSTAFFING_WEIGHT);
+    }
+
+    // ── T-S51: the understaffing weight trades off against labor cost ───────
+
+    @Test
+    void understaffingPenaltyPrefersFullStaffing() {
+        java.util.function.Function<Long, EmployeeRoster> solve = weight -> Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> e.costPerHour(10))
+                .employee("b", e -> e.costPerHour(10))
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(2).needsAtLeast(1))
+                .prefer(penalizeUnderstaffing(weight))
+                .goal(totalLaborCost())
+                .solver().timeLimit(Duration.ofSeconds(5)).solve();
+        // One 8 h assignment costs 480 min * 10 = 4800 objective units.
+        assertThat(solve.apply(10_000L).assignments()).hasSize(2);
+        assertThat(solve.apply(1L).assignments()).hasSize(1);
+    }
+
+    // ── T-S52: needsAtLeast above needs is rejected ─────────────────────────
+
+    @Test
+    void needsAtLeastAboveNeedsThrows() {
+        assertThatThrownBy(() -> Optimize.scheduling()
+                .horizon(MON, 7)
+                .employee("a", e -> {})
+                .shift("s", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(2).needsAtLeast(3)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("needsAtLeast(3) exceeds needs(2)");
     }
 }

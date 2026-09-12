@@ -293,11 +293,12 @@ class UnavailabilityTest {
                 .shift("mon1", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8,0)).to(LocalTime.of(16,0)).needs(1).withSkill("RN"))
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
-        // mon1 maps to the FIRST Monday (2026-07-06) — alice is NOT blocked then
+        // on(MONDAY) recurs: mon1 occurs on both Mondays of the 14-day horizon.
         assertThat(roster.isFeasible()).isTrue();
-        // alice can cover the first Monday (only the second one is blocked)
-        // Exactly one of them must cover it
-        assertThat(roster.staffOf("mon1")).hasSize(1);
+        assertThat(roster.staffOf("mon1")).hasSize(2);
+        assertThat(roster.staffOf("mon1", LocalDate.of(2026, 7, 6))).hasSize(1);
+        // alice is blocked on the second Monday, so bob must cover it.
+        assertThat(roster.staffOf("mon1", secondMonday)).containsExactly("bob");
     }
 
     // ── Validation ───────────────────────────────────────────────────────────

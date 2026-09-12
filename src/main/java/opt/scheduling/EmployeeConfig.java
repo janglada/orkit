@@ -49,7 +49,7 @@ public final class EmployeeConfig {
         return this;
     }
 
-    /** Records that this employee prefers the given shift (used by {@code honorEmployeePreferences()}). */
+    /** Records that this employee prefers the given shift id, every occurrence of it (used by {@code honorEmployeePreferences()}). */
     public EmployeeConfig prefersShift(String shiftId) {
         this.preferredShifts.add(shiftId);
         return this;
