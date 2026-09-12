@@ -96,8 +96,8 @@ Resolution for a transition `fromType → toType` on machine `M`:
 
 Notes: setup entries must be non-negative; `setupTimeOn`/`initialTypeOn` must
 reference declared machines (fails fast with `ModelException`); a matrix type
-not used by any operation logs a warning to `stderr` (matrices may be shared
-across models). Flexible (`onAnyOf`) typed operations pay the setup of whichever
+not used by any operation is reported via `build().warnings()` (matrices may be
+shared across models). Flexible (`onAnyOf`) typed operations pay the setup of whichever
 machine they land on. With no setup matrix configured, the model behaves exactly
 as before (plain `NoOverlap` per machine).
 
@@ -238,7 +238,7 @@ for (BinAssignment a : sol.assignments()) {
 }
 ```
 
-Items may be left out of every bin when total weight exceeds total capacity; those appear in `sol.unassignedItems()`. Use `sol.binOf(item)` / `sol.assignmentOf(bin)` to look up individual placements.
+Items may be left out of every bin when total weight exceeds total capacity; those appear in `sol.unassignedItems()`. Use `sol.binOf(item)` / `sol.assignmentOf(bin)` (both return `Optional`) to look up individual placements.
 
 ### Container loading (3D bin packing)
 
@@ -315,8 +315,8 @@ BookingSolution plan = Optimize.booking()
 
 System.out.println(plan.status() + " objective=" + plan.objective());
 for (AppointmentAssignment a : plan.assignments()) {
-    System.out.printf("  %s -> %s at %d-%d%n",
-            a.appointmentId(), a.resourceId(), a.startMinute(), a.endMinute());
+    System.out.printf("  %s -> %s at %s-%s%n",
+            a.appointmentId(), a.resourceId(), a.start().toLocalTime(), a.end().toLocalTime());
 }
 ```
 

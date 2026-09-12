@@ -47,8 +47,8 @@ class PackingTest {
 
         assertThat(sol.isFeasible()).isTrue();
         assertThat(sol.unassignedBoxes()).containsExactly("big");
-        assertThat(sol.containerOf("small")).isEqualTo("C1");
-        assertThat(sol.containerOf("big")).isNull();
+        assertThat(sol.containerOf("small")).contains("C1");
+        assertThat(sol.containerOf("big")).isEmpty();
     }
 
     // ── T-Pk3: Per-container weight limit is respected ───────────────────────────
@@ -343,7 +343,7 @@ class PackingTest {
                 .box("B", b -> b.length(5).width(5).height(5).weight(5))
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
         assertThat(exact.unassignedBoxes()).isEmpty();
-        assertThat(exact.containerOf("B")).isEqualTo("C");
+        assertThat(exact.containerOf("B")).contains("C");
     }
 
     // ── T-Pk17: Default goal minimizes containers used ───────────────────────
@@ -389,8 +389,8 @@ class PackingTest {
                 .container("C", c -> c.length(10).width(10).height(10).maxWeight(10))
                 .box("B", b -> b.length(2).width(2).height(2).weight(1))
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
-        assertThat(sol.assignmentOf("NOPE")).isNull();
-        assertThat(sol.containerOf("NOPE")).isNull();
+        assertThat(sol.assignmentOf("NOPE")).isEmpty();
+        assertThat(sol.containerOf("NOPE")).isEmpty();
     }
 
     // ── T-Pk20: Re-solve yields the same objective ──────────────────────────
@@ -419,7 +419,7 @@ class PackingTest {
                 .box("B", b -> b.length(5).width(2).height(2).weight(1))   // not rotatable
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
         assertThat(noRotate.isFeasible()).isTrue();
-        assertThat(noRotate.containerOf("B")).isNull();   // cannot fit without rotation
+        assertThat(noRotate.containerOf("B")).isEmpty();   // cannot fit without rotation
 
         PackingSolution withRotate = new PackingBuilder()
                 .goal(Goals.maximizeVolumeUtilization())
@@ -427,7 +427,7 @@ class PackingTest {
                 .box("B", b -> b.length(5).width(2).height(2).weight(1).rotatable(true))
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
         assertThat(withRotate.isFeasible()).isTrue();
-        assertThat(withRotate.containerOf("B")).isEqualTo("C");
+        assertThat(withRotate.containerOf("B")).contains("C");
         ContainerAssignment.BoxPlacement p = placementOf(withRotate, "B");
         assertThat(p).isNotNull();
         assertThat(p.orientation()).as("rotatable box must report a chosen orientation").isNotNull();

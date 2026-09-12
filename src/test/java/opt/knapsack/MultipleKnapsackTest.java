@@ -105,10 +105,8 @@ class MultipleKnapsackTest {
         assertThat(sol.isFeasible()).isTrue();
 
         for (String item : List.of("I1", "I2")) {
-            String bin = sol.binOf(item);
-            assertThat(bin).as("item %s should be assigned to a bin", item).isNotNull();
-            BinAssignment a = sol.assignmentOf(bin);
-            assertThat(a).as("assignmentOf(%s) should exist", bin).isNotNull();
+            String bin = sol.binOf(item).orElseThrow();
+            BinAssignment a = sol.assignmentOf(bin).orElseThrow();
             assertThat(a.items()).contains(item);
         }
     }
@@ -318,16 +316,16 @@ class MultipleKnapsackTest {
                 .isInstanceOf(ModelException.class).hasMessageContaining("item id");
     }
 
-    // ── T-Kn16: Unknown accessors return null ───────────────────────────────
+    // ── T-Kn16: Unknown accessors return empty ──────────────────────────────
 
     @Test
-    void unknownAccessorsReturnNull() {
+    void unknownAccessorsReturnEmpty() {
         MultipleKnapsackSolution sol = Optimize.multipleKnapsack()
                 .bin("B", b -> b.capacity(10))
                 .item("I", i -> i.profit(5).weight(3))
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
-        assertThat(sol.binOf("NOPE")).isNull();
-        assertThat(sol.assignmentOf("NOPE")).isNull();
+        assertThat(sol.binOf("NOPE")).isEmpty();
+        assertThat(sol.assignmentOf("NOPE")).isEmpty();
     }
 
     // ── T-Kn17: Empty declared bin appears in assignments() ─────────────────

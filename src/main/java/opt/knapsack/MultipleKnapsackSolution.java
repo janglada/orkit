@@ -46,16 +46,16 @@ public final class MultipleKnapsackSolution implements Solution {
         return unassignedItems;
     }
 
-    /** The assignment for the given bin id, or {@code null} if none. */
-    public BinAssignment assignmentOf(String bin) {
-        return assignments.stream().filter(a -> a.bin().equals(bin)).findFirst().orElse(null);
+    /** The assignment for the given bin id; empty for an unknown bin or when no solution was found. */
+    public Optional<BinAssignment> assignmentOf(String bin) {
+        return assignments.stream().filter(a -> a.bin().equals(bin)).findFirst();
     }
 
-    /** The bin id holding the given item, or {@code null} if the item is unassigned. */
-    public String binOf(String item) {
+    /** The bin id holding the given item; empty when the item is unassigned or unknown. */
+    public Optional<String> binOf(String item) {
         for (BinAssignment a : assignments) {
-            if (a.items().contains(item)) return a.bin();
+            if (a.items().contains(item)) return Optional.of(a.bin());
         }
-        return null;
+        return Optional.empty();
     }
 }

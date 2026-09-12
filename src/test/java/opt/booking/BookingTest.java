@@ -122,8 +122,8 @@ class BookingTest {
         assertThat(sol.status()).isEqualTo(SolveStatus.OPTIMAL);
         assertThat(sol.assignments()).hasSize(1);
         AppointmentAssignment asg = sol.assignments().get(0);
-        assertThat(asg.startMinute()).isGreaterThanOrEqualTo(600);
-        assertThat(asg.endMinute()).isLessThanOrEqualTo(720);
+        assertThat(asg.start()).isAfterOrEqualTo(earliest);
+        assertThat(asg.end()).isBeforeOrEqualTo(latest);
     }
 
     // ── T-Bk7: structural — no overlap on same resource ──────────────────────
@@ -214,14 +214,14 @@ class BookingTest {
 
     private void assertNoOverlap(List<AppointmentAssignment> onResource) {
         List<AppointmentAssignment> sorted = onResource.stream()
-                .sorted(java.util.Comparator.comparingLong(AppointmentAssignment::startMinute))
+                .sorted(java.util.Comparator.comparing(AppointmentAssignment::start))
                 .toList();
         for (int i = 0; i < sorted.size() - 1; i++) {
             AppointmentAssignment a = sorted.get(i);
             AppointmentAssignment b = sorted.get(i + 1);
-            assertThat(a.endMinute())
+            assertThat(a.end())
                     .as("Overlap on resource between %s and %s", a.appointmentId(), b.appointmentId())
-                    .isLessThanOrEqualTo(b.startMinute());
+                    .isBeforeOrEqualTo(b.start());
         }
     }
 
@@ -353,8 +353,8 @@ class BookingTest {
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
         assertThat(sol.isFeasible()).isTrue();
         assertThat(sol.assignmentsOn("NOPE")).isEmpty();
-        // Appointment placed on day 2 => start minute >= 24*60 = 1440.
+        // Appointment placed on day 2 => starts on or after 2026-01-06 09:00.
         assertThat(sol.assignments()).hasSize(1);
-        assertThat(sol.assignments().get(0).startMinute()).isGreaterThanOrEqualTo(24 * 60);
+        assertThat(sol.assignments().get(0).start()).isAfterOrEqualTo(LocalDateTime.of(2026, 1, 6, 9, 0));
     }
 }

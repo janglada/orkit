@@ -5,8 +5,6 @@ import opt.Optimize;
 import opt.SolveStatus;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.time.Duration;
 import java.util.List;
 
@@ -617,22 +615,17 @@ class JobShopTest {
     }
 
     @Test
-    void unusedMatrixTypeWarnsOnStderr() {
-        ByteArrayOutputStream err = new ByteArrayOutputStream();
-        PrintStream originalErr = System.err;
-        System.setErr(new PrintStream(err));
-        try {
-            Optimize.jobShop()
-                    .machines("M1")
-                    .setupTime("FOO", "BAR", 5)            // neither used
-                    .job("J1", j -> j.operation().on("M1").type("ALU").takes(3))
-                    .solver().timeLimit(Duration.ofSeconds(5)).solve();
-        } finally {
-            System.setErr(originalErr);
-        }
-        String captured = err.toString();
-        assertThat(captured).contains("FOO");
-        assertThat(captured).contains("BAR");
+    void unusedMatrixTypeIsReportedAsWarning() {
+        var problem = Optimize.jobShop()
+                .machines("M1")
+                .setupTime("FOO", "BAR", 5)            // neither used
+                .job("J1", j -> j.operation().on("M1").type("ALU").takes(3))
+                .build();
+        assertThat(problem.warnings()).hasSize(2)
+                .anySatisfy(w -> assertThat(w).contains("FOO"))
+                .anySatisfy(w -> assertThat(w).contains("BAR"));
+        assertThat(Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(3)).build().warnings()).isEmpty();
     }
 
     // ── T-J28: backward-compat — types without a matrix behave as no setups ──

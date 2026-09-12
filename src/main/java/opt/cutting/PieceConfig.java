@@ -10,6 +10,7 @@ import opt.internal.Validate;
  */
 public final class PieceConfig {
 
+    String id;
     long length;
     int width = 0;
     int quantity = 1;
@@ -40,6 +41,10 @@ public final class PieceConfig {
         if (quantity < 1) throw new ModelException("quantity() must be >= 1, got: " + quantity);
         this.quantity = quantity;
         return this;
+    }
+
+    String id() {
+        return id;
     }
 
     long length() {

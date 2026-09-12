@@ -364,18 +364,20 @@ class CuttingTest {
         assertThat(sol.totalWaste()).isEqualTo(0);
     }
 
-    // ── T-Ct17: Synthesized "<length>#<N>" id format ────────────────────────
+    // ── T-Ct17: Instance ids keep the declared id: "<id>#<n>" ───────────────
 
     @Test
-    void synthesizedIdsUseLengthCounterFormat() {
+    void instanceIdsKeepDeclaredIdWithCounter() {
         CuttingSolution sol = new CuttingBuilder()
                 .stock("S", s -> s.length(100))
                 .required("P", p -> p.length(40))
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
         StockAssignment roll = sol.assignments().stream()
                 .filter(a -> !a.pieces().isEmpty()).findFirst().orElseThrow();
-        assertThat(roll.stockId()).isEqualTo("100#1");
-        assertThat(roll.pieces().get(0).pieceId()).isEqualTo("40#1");
+        assertThat(roll.stockId()).isEqualTo("S#1");
+        assertThat(roll.stockType()).isEqualTo("S");
+        assertThat(roll.pieces().get(0).pieceId()).isEqualTo("P#1");
+        assertThat(roll.pieces().get(0).pieceType()).isEqualTo("P");
     }
 
     // ── T-Ct18: MinimizeTotalCost prefers cheaper stock ────────────────────
@@ -424,7 +426,7 @@ class CuttingTest {
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(sol.isFeasible()).isTrue();
-        assertThat(sol.unplacedPieces()).containsExactly("80#1");
+        assertThat(sol.unplacedPieces()).containsExactly("big#1");
         assertThat(sol.totalStockUsed()).isZero();
     }
 
@@ -445,7 +447,7 @@ class CuttingTest {
 
         assertThat(sol.isFeasible()).isTrue();
         // The oversized piece is impossible to place → dropped.
-        assertThat(sol.unplacedPieces()).contains("150#2");
+        assertThat(sol.unplacedPieces()).contains("long#1");
         // The short piece is placed.
         assertThat(sol.totalStockUsed()).isEqualTo(1);
         // Objective ≈ 1 stock + 50 penalty for the dropped piece.

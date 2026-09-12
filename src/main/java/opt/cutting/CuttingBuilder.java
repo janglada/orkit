@@ -32,6 +32,7 @@ public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
             throw new ModelException("Duplicate stock id: '" + id + "'.");
         }
         StockConfig cfg = new StockConfig();
+        cfg.id = id;
         config.accept(cfg);
         if (cfg.length() < 1) {
             throw new ModelException("Stock '" + id + "' must set a length via .length(...).");
@@ -47,6 +48,7 @@ public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
             throw new ModelException("Duplicate piece id: '" + id + "'.");
         }
         PieceConfig cfg = new PieceConfig();
+        cfg.id = id;
         config.accept(cfg);
         if (cfg.length() < 1) {
             throw new ModelException("Piece '" + id + "' must set a length via .length(...).");
@@ -82,21 +84,19 @@ public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
             throw new ModelException("At least one piece is required.");
         }
 
+        // Quantity expansion: instance ids are "<declared id>#<n>" with n counting from 1
+        // per type, so results map straight back to the caller's ids (see StockAssignment.stockType()).
         List<StockDef> stockDefs = new ArrayList<>();
-        int stockCounter = 0;
         for (StockConfig sc : rawStocks) {
-            for (int q = 0; q < sc.quantity(); q++) {
-                stockCounter++;
-                stockDefs.add(new StockDef(sc.length() + "#" + stockCounter, sc.length(), sc.width(), sc.cost()));
+            for (int q = 1; q <= sc.quantity(); q++) {
+                stockDefs.add(new StockDef(sc.id() + "#" + q, sc.length(), sc.width(), sc.cost()));
             }
         }
 
         List<PieceDef> pieceDefs = new ArrayList<>();
-        int pieceCounter = 0;
         for (PieceConfig pc : rawPieces) {
-            for (int q = 0; q < pc.quantity(); q++) {
-                pieceCounter++;
-                pieceDefs.add(new PieceDef(pc.length() + "#" + pieceCounter, pc.length(), pc.width()));
+            for (int q = 1; q <= pc.quantity(); q++) {
+                pieceDefs.add(new PieceDef(pc.id() + "#" + q, pc.length(), pc.width()));
             }
         }
 

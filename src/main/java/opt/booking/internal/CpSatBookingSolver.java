@@ -163,7 +163,7 @@ public final class CpSatBookingSolver {
                     }
                     if (assignedResource != null) {
                         assignments.add(new AppointmentAssignment(a.id(), assignedResource,
-                                startVal, startVal + a.durationMinutes()));
+                                epoch.plusMinutes(startVal), epoch.plusMinutes(startVal + a.durationMinutes())));
                     } else {
                         unscheduled.add(a.id());
                     }
@@ -187,7 +187,8 @@ public final class CpSatBookingSolver {
             for (var e : xForA.entrySet()) {
                 boolean chosen = e.getKey().equals(prev.resourceId());
                 model.addHint(e.getValue(), chosen ? 1 : 0);
-                if (chosen) model.addHint(s.get(prev.appointmentId()).get(e.getKey()), prev.startMinute());
+                if (chosen) model.addHint(s.get(prev.appointmentId()).get(e.getKey()),
+                        Duration.between(horizonStart.atStartOfDay(), prev.start()).toMinutes());
             }
         }
     }

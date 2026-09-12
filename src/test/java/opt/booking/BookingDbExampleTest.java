@@ -123,14 +123,14 @@ class BookingDbExampleTest {
             }
             for (List<AppointmentAssignment> onResource : byResource.values()) {
                 List<AppointmentAssignment> sorted = onResource.stream()
-                        .sorted(Comparator.comparingLong(AppointmentAssignment::startMinute))
+                        .sorted(Comparator.comparing(AppointmentAssignment::start))
                         .toList();
                 for (int i = 0; i < sorted.size() - 1; i++) {
                     AppointmentAssignment a = sorted.get(i);
                     AppointmentAssignment b = sorted.get(i + 1);
-                    assertThat(a.endMinute())
+                    assertThat(a.end())
                             .as("Overlap on resource between %s and %s", a.appointmentId(), b.appointmentId())
-                            .isLessThanOrEqualTo(b.startMinute());
+                            .isBeforeOrEqualTo(b.start());
                 }
             }
 
@@ -140,13 +140,12 @@ class BookingDbExampleTest {
             for (AppointmentAssignment a : sol.assignments()) {
                 if (a.appointmentId().equals("URGENT-01")) {
                     urgentScheduled = true;
-                    // Day 1 = first 24*60 minutes of the horizon.
-                    assertThat(a.startMinute())
+                    assertThat(a.start())
                             .as("URGENT-01 must start at or after 08:00 on day 1")
-                            .isGreaterThanOrEqualTo(8 * 60);
-                    assertThat(a.endMinute())
+                            .isAfterOrEqualTo(horizonStart.atTime(8, 0));
+                    assertThat(a.end())
                             .as("URGENT-01 must end at or before 12:00 on day 1")
-                            .isLessThanOrEqualTo(12 * 60);
+                            .isBeforeOrEqualTo(horizonStart.atTime(12, 0));
                 }
             }
             assertThat(urgentScheduled)
@@ -167,12 +166,9 @@ class BookingDbExampleTest {
             System.out.printf("%-14s  %-10s  %-8s  %-8s%n", "Appointment", "Resource", "Start", "End");
             System.out.println("-".repeat(50));
             for (AppointmentAssignment a : sol.assignments()) {
-                long startMin = a.startMinute();
-                long endMin = a.endMinute();
-                System.out.printf("%-14s  %-10s  %02d:%02d   %02d:%02d%n",
+                System.out.printf("%-14s  %-10s  %s   %s%n",
                         a.appointmentId(), a.resourceId(),
-                        startMin / 60, startMin % 60,
-                        endMin / 60, endMin % 60);
+                        a.start().toLocalTime(), a.end().toLocalTime());
             }
             if (!sol.unscheduled().isEmpty()) {
                 System.out.printf("%nUnscheduled: %s%n", String.join(", ", sol.unscheduled()));

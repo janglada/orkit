@@ -10,6 +10,7 @@ import opt.internal.Validate;
  */
 public final class StockConfig {
 
+    String id;
     long length;
     int width = 0;
     long cost = 1;
@@ -48,6 +49,10 @@ public final class StockConfig {
         if (quantity < 1) throw new ModelException("quantity() must be >= 1, got: " + quantity);
         this.quantity = quantity;
         return this;
+    }
+
+    String id() {
+        return id;
     }
 
     long length() {

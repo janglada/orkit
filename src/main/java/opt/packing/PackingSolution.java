@@ -6,6 +6,7 @@ import opt.SolveStatus;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 
 /** The solved result of a container-loading / 3D bin packing problem. */
@@ -41,22 +42,21 @@ public final class PackingSolution implements Solution {
         return unassignedBoxes;
     }
 
-    /** The assignment for the given container id, or {@code null} if none. */
-    public ContainerAssignment assignmentOf(String containerId) {
+    /** The assignment for the given container id; empty for an unknown container or when no solution was found. */
+    public Optional<ContainerAssignment> assignmentOf(String containerId) {
         return assignments.stream()
                 .filter(a -> a.containerId().equals(containerId))
-                .findFirst()
-                .orElse(null);
+                .findFirst();
     }
 
-    /** The container id holding the given box, or {@code null} if the box is unassigned. */
-    public String containerOf(String boxId) {
+    /** The container id holding the given box; empty when the box is unassigned or unknown. */
+    public Optional<String> containerOf(String boxId) {
         for (ContainerAssignment a : assignments) {
             for (ContainerAssignment.BoxPlacement p : a.boxes()) {
-                if (p.boxId().equals(boxId)) return a.containerId();
+                if (p.boxId().equals(boxId)) return Optional.of(a.containerId());
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     /** The number of containers that received at least one box. */

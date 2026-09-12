@@ -81,7 +81,7 @@ class MultipleKnapsackDbExampleTest {
             for (Map<String, Object> row : binRows) {
                 String id = TestDatabase.asString(row, "id");
                 long cap = TestDatabase.asLong(row, "capacity");
-                BinAssignment a = sol.assignmentOf(id);
+                BinAssignment a = sol.assignmentOf(id).orElseThrow();
                 assertThat(a).as("assignment for %s should exist", id).isNotNull();
                 assertThat(a.usedCapacity())
                         .as("truck %s loads %d but capacity is %d", id, a.usedCapacity(), cap)

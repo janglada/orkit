@@ -1,6 +1,7 @@
 package opt.jobshop;
 
 import opt.ModelException;
+import opt.OptimizationProblem;
 import opt.CpSatProblem;
 import opt.CpSatSolver;
 import opt.internal.AbstractCpSatSolver;
@@ -130,7 +131,14 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
     /** Builds an immutable, reusable problem instance. */
     public CpSatProblem<JobShopSchedule> build() {
         SetupMatrix matrix = buildSetupMatrix();
-        return new JobShopProblem(List.copyOf(machines), List.copyOf(jobs), matrix, goal);
+        return new JobShopProblem(List.copyOf(machines), List.copyOf(jobs), matrix, goal,
+                collectUnusedTypeWarnings(matrix));
+    }
+
+    /** Diagnostics for the model as currently declared; see {@link OptimizationProblem#warnings()}. */
+    @Override
+    public List<String> warnings() {
+        return build().warnings();
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
@@ -161,11 +169,10 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
                 defaultSetupTime,
                 Map.copyOf(initialTypes));
 
-        warnOnUnusedTypes(matrix);
         return matrix;
     }
 
-    private void warnOnUnusedTypes(SetupMatrix matrix) {
+    private List<String> collectUnusedTypeWarnings(SetupMatrix matrix) {
         // Types used by operations + initial types are "in use".
         Set<String> used = new LinkedHashSet<>(initialTypes.values());
         for (JobDef job : jobs) {
@@ -173,15 +180,15 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
                 if (op.type() != null) used.add(op.type());
             }
         }
+        List<String> warnings = new ArrayList<>();
         for (String type : matrix.referencedTypes()) {
             if (!used.contains(type)) {
-                System.err.println(
-                        "WARNING: setup type '" + type
-                                + "' is declared in the setup matrix but not used"
-                                + " by any operation or initial state; it has no effect"
-                                + " (matrices may be shared across models).");
+                warnings.add("Setup type '" + type
+                        + "' is declared in the setup matrix but not used by any operation"
+                        + " or initial state; it has no effect (matrices may be shared across models).");
             }
         }
+        return List.copyOf(warnings);
     }
 
     private static Map<String, Map<String, Integer>> copyMatrix(
@@ -214,12 +221,20 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
         private final List<JobDef> jobs;
         private final SetupMatrix setupMatrix;
         private final JobShopGoal goal;
+        private final List<String> warnings;
 
-        JobShopProblem(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal) {
+        JobShopProblem(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal,
+                       List<String> warnings) {
             this.machines = machines;
             this.jobs = jobs;
             this.setupMatrix = setupMatrix;
             this.goal = goal;
+            this.warnings = warnings;
+        }
+
+        @Override
+        public List<String> warnings() {
+            return warnings;
         }
 
         @Override

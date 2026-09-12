@@ -79,10 +79,10 @@ public class ClinicAppointmentBooking {
                 continue;
             }
             on.stream()
-                    .sorted(java.util.Comparator.comparingLong(AppointmentAssignment::startMinute))
-                    .forEach(a -> System.out.printf("  %s  %3d–%3d min  (%d min)%n",
-                            pad(a.appointmentId(), 18), a.startMinute(), a.endMinute(),
-                            a.endMinute() - a.startMinute()));
+                    .sorted(java.util.Comparator.comparing(AppointmentAssignment::start))
+                    .forEach(a -> System.out.printf("  %s  %s–%s  (%d min)%n",
+                            pad(a.appointmentId(), 18), a.start().toLocalTime(), a.end().toLocalTime(),
+                            a.duration().toMinutes()));
         }
 
         if (!solution.unscheduled().isEmpty()) {

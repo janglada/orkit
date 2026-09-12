@@ -152,7 +152,7 @@ public final class CpSatMultipleKnapsackSolver {
     /** Hints every (item, bin) literal from a previous solution. */
     private void applyWarmStart(CpModel model, BoolVar[][] x) {
         for (int i = 0; i < items.size(); i++) {
-            String prevBin = warmStart.binOf(items.get(i).id());
+            String prevBin = warmStart.binOf(items.get(i).id()).orElse(null);
             for (int b = 0; b < bins.size(); b++) {
                 model.addHint(x[i][b], bins.get(b).id().equals(prevBin) ? 1 : 0);
             }

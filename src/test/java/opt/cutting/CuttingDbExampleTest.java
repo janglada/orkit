@@ -107,10 +107,10 @@ class CuttingDbExampleTest {
 
             // MinimizeTotalCost should prefer the cheaper STD-1000 rolls.
             long stdRollsUsed = sol.assignments().stream()
-                    .filter(a -> !a.pieces().isEmpty() && a.stockId().contains("STD"))
+                    .filter(a -> !a.pieces().isEmpty() && a.stockType().equals("STD-1000"))
                     .count();
             long prmRollsUsed = sol.assignments().stream()
-                    .filter(a -> !a.pieces().isEmpty() && a.stockId().contains("PRM"))
+                    .filter(a -> !a.pieces().isEmpty() && a.stockType().equals("PRM-1000"))
                     .count();
             assertThat(stdRollsUsed)
                     .as("cheaper STD-1000 rolls should be preferred over PRM-1000")
