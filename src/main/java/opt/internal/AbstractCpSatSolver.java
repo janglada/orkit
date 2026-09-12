@@ -21,6 +21,15 @@ public abstract class AbstractCpSatSolver<S extends Solution> implements CpSatSo
     /** Previous solution used for hints, or null. */
     protected S warmStart;
 
+    /**
+     * Loads the OR-Tools native library as soon as a solver exists: CP-SAT variable creation
+     * already crosses into JNI, so loading only at solve time would be too late for callers
+     * that construct a builder directly instead of going through {@code Optimize}.
+     */
+    protected AbstractCpSatSolver() {
+        NativeLoader.ensureLoaded();
+    }
+
     @Override public CpSatSolver<S> timeLimit(Duration limit)      { params.timeLimit(limit);  return this; }
     @Override public CpSatSolver<S> verbose(boolean logToStdout)   { params.verbose(logToStdout); return this; }
     @Override public CpSatSolver<S> workers(int threads)           { params.workers(threads);  return this; }

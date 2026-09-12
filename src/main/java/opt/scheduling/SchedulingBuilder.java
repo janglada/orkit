@@ -144,7 +144,7 @@ public final class SchedulingBuilder implements CpSatProblem<EmployeeRoster> {
         return new SchedulingProblem(snapshot());
     }
 
-    /** Convenience method: builds the problem and immediately returns its {@link Solver}. */
+    /** Convenience method: builds the problem and immediately returns its {@link CpSatSolver}. */
     @Override
     public CpSatSolver<EmployeeRoster> solver() {
         return build().solver();

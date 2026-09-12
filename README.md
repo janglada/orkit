@@ -42,7 +42,7 @@ mvn exec:java -Dexec.mainClass=opt.examples.SteelRollCuttingStock
 
 ## Quick start
 
-All entry points live on `opt.Optimize`. Each builder ends with `.solver()...solve()`, which returns a typed result (`JobShopSchedule`, `EmployeeRoster`, `RoutingPlan`, `MultipleKnapsackSolution`, `PackingSolution`, `BookingSolution`, `CuttingSolution`).
+All entry points live on `opt.Optimize`. Each builder ends with `.solver()...solve()`, which returns a typed result (`JobShopSchedule`, `EmployeeRoster`, `RoutingPlan`, `MultipleKnapsackSolution`, `PackingSolution`, `BookingSolution`, `CuttingSolution`). Every builder selects its objective with `.goal(...)` from the domain's `Goals` factory, and `.build()` returns an immutable problem that can be solved repeatedly (see [Solver knobs](#solver-knobs)).
 
 ### Job-shop scheduling
 
@@ -129,38 +129,82 @@ JobShopSchedule schedule = Optimize.jobShop()
 ```
 
 Available goals: `Goals.minimizeMakespan()` (default),
-`Goals.minimizeTardiness(weight)`, and
-`Goals.minimizeMakespanAndTardiness(makespanWeight, tardinessWeight)`. Weights
-must be `> 0`. Flexible (`onAnyOf`) operations share their start/end across
-candidate machines, so release/deadline windows apply without presence gating.
+`Goals.minimizeTardiness(weight)`,
+`Goals.minimizeMakespanAndTardiness(makespanWeight, tardinessWeight)`, and
+`Goals.minimizeWeightedCompletionTime()`. Weights must be `> 0`. Flexible
+(`onAnyOf`) operations share their start/end across candidate machines, so
+release/deadline windows apply without presence gating. Tardiness is reported on
+every schedule via `schedule.tardinessOf(job)` / `totalTardiness()`, whatever the goal.
+
+#### Job weights, downtime, and no-wait sequences
+
+```java
+JobShopSchedule schedule = Optimize.jobShop()
+        .machines("MILL", "LATHE")
+        .downtime("MILL", 100, 160)               // MILL unavailable during [100, 160)
+        .goal(Goals.minimizeTardiness(1))
+        .job("Rush", j -> j.weight(10).noWait()   // 10x tardiness weight; no idle time between ops
+                .operation().on("MILL").takes(20)
+                .then().on("LATHE").takes(15).dueBy(40))
+        .job("Std", j -> j.maxLag(30)             // at most 30 idle units between consecutive ops
+                .operation().on("LATHE").takes(25)
+                .then().on("MILL").takes(10).maxLagAfterPrevious(5).dueBy(60))
+        .solver().timeLimit(Duration.ofSeconds(15)).solve();
+
+System.out.println("Rush late by " + schedule.tardinessOf("Rush"));
+```
+
+- `.downtime(machine, from, to)` is repeatable; overlapping windows are merged. Operations are non-preemptive, so none may straddle a window.
+- `.weight(w)` (default 1) multiplies the job's tardiness terms and its completion time under `minimizeWeightedCompletionTime()`.
+- `.noWait()` / `.maxLag(lag)` apply to every consecutive pair of a job; `.maxLagAfterPrevious(lag)` overrides for one operation (not allowed on the first).
 
 ### Employee shift scheduling
 
 ```java
 import opt.Optimize;
 import opt.scheduling.EmployeeRoster;
+import opt.scheduling.ShiftAssignment;
 import static opt.scheduling.Goals.*;
 import static opt.scheduling.Rules.*;
 import java.time.*;
 import java.time.DayOfWeek;
 
 EmployeeRoster roster = Optimize.scheduling()
-        .horizon(LocalDate.of(2026, 7, 6), 7)
-        .employee("Alice", e -> e.skills("RN").costPerHour(50).maxHoursPerWeek(40))
+        .horizon(LocalDate.of(2026, 7, 6), 14)
+        .employee("Alice", e -> e.skills("RN").costPerHour(50).maxHoursPerWeek(40).prefersShift("Day"))
         .employee("Bob",   e -> e.skills("RN").costPerHour(48).maxHoursPerWeek(40))
-        .shift("Mon-Day", s -> s.on(DayOfWeek.MONDAY)
+        .shift("Day", s -> s.daily()                          // one instance per day of the horizon
                 .from(LocalTime.of(7, 0)).to(LocalTime.of(15, 0))
-                .needs(1).withSkill("RN"))
+                .needs(2).needsAtLeast(1).withSkill("RN")      // 2 wanted, 1 is the hard floor
+                .category("DAY"))
+        .shift("Night", s -> s.every(DayOfWeek.FRIDAY, DayOfWeek.SATURDAY)
+                .from(LocalTime.of(23, 0)).to(LocalTime.of(7, 0))
+                .needs(1).withSkill("RN").category("NIGHT"))
+        .assign("Alice", "Day", LocalDate.of(2026, 7, 6))    // lock one instance
+        .forbid("Bob", "Night")                               // Bob never works nights
         .constrain(oneShiftPerEmployeePerDay())
         .constrain(minRestBetweenShifts(Duration.ofHours(11)))
+        .constrain(forbidSequence("NIGHT", "DAY"))            // no day shift right after a night
         .prefer(balanceWorkloadAcrossEmployees())
         .prefer(honorEmployeePreferences())
+        .prefer(penalizeUnderstaffing(500))
         .goal(totalLaborCost())
         .solver()
         .timeLimit(Duration.ofSeconds(15))
         .workers(4)
         .solve();
+
+for (ShiftAssignment a : roster.assignments()) {
+    System.out.printf("%s  %s  %s%n", a.date(), a.shift(), a.employee());
+}
+System.out.println(roster.staffOf("Night", LocalDate.of(2026, 7, 10)));
 ```
+
+- **Recurring shifts.** `.daily()`, `.every(DayOfWeek...)`, and `.on(DayOfWeek)` (alias of `every`) expand into one instance per matching date; `.on(LocalDate)` places a single instance. Every instance reports the declared id in `ShiftAssignment.shift()` and is told apart by `date()`; `roster.staffOf(id)` covers all occurrences and `staffOf(id, date)` one of them. A recurrence with no occurrence in the horizon is rejected.
+- **Locks.** `.assign(employee, shift)` / `.forbid(employee, shift)` apply to every instance; add a `LocalDate` for one instance. Assigning an ineligible employee, assigning more people than `needs`, or both assigning and forbidding the same pair fails at build time.
+- **Forbidden sequences.** Tag shifts with `.category(...)` and use `Rules.forbidSequence(from, to)` to ban a `to` shift on the day after a `from` shift. Unlike `minRestBetweenShifts` this is categorical and day-based.
+- **Soft staffing.** `.needsAtLeast(min)` makes `needs(n)` a target; each missing employee is penalized with `Goals.penalizeUnderstaffing(weight)` (default weight 100 when the goal is not declared).
+- **Weekly hours.** `maxHoursPerWeek` caps every window of 7 consecutive days, not the whole horizon.
 
 ### Vehicle routing
 
@@ -210,6 +254,42 @@ for (Route r : plan.routes()) {
     System.out.printf("%s from %s: %s%n", r.vehicle(), r.depotId(), r.stops());
 }
 ```
+
+**Arrival times, vehicle windows, costs, skills, pickup and delivery.**
+
+```java
+long[][] meters  = ...;   // from a road-network API; depots first, then stops
+long[][] minutes = ...;
+
+RoutingPlan plan = Optimize.vehicleRouting()
+        .depot("Hub", 41.35, 2.13)
+        .vehicle("Van", v -> v.capacity(20).fixedCost(50_000)
+                .availableFrom(LocalTime.of(8, 0)).availableUntil(LocalTime.of(17, 0))
+                .maxRouteDuration(Duration.ofHours(6)))
+        .vehicle("Reefer", v -> v.capacity(10).fixedCost(80_000).skills("cold"))
+        .stop("Fish", s -> s.at(41.39, 2.16).demand(3).requires("cold"))
+        .stop("P1", s -> s.at(41.36, 2.10).demand(4))       // pickup: load goes on here
+        .stop("D1", s -> s.at(41.33, 2.05))                 // delivery: same load comes off
+        .pickupAndDelivery("P1", "D1")
+        .pickupAndDeliveryPolicy(PickupDeliveryPolicy.LIFO)
+        .distances(DistanceSource.fromMatrices(meters, minutes))
+        .goal(Goals.totalCost())                            // distance + fixed cost of used vehicles
+        .solver().timeLimit(Duration.ofSeconds(15)).solve();
+
+for (Route r : plan.routes()) {
+    System.out.printf("%s leaves %s, back %s, fixed %d%n", r.vehicle(), r.startTime(), r.endTime(), r.fixedCost());
+    for (Visit v : r.visits()) {
+        System.out.printf("  %s  arrive %s  leave %s  load %d%n", v.stop(), v.arrival(), v.departure(), v.loadAfter());
+    }
+}
+plan.routeOf("Reefer").ifPresent(r -> System.out.println("Reefer: " + r.stops()));
+```
+
+- **Times** are reported (`Route.startTime/endTime`, `Visit.arrival/departure`) whenever any time feature is present: a stop window or service time, a vehicle window or `maxRouteDuration`, or a travel-time matrix. A pure CVRP has `hasTimes() == false` and null times.
+- **Goals.** `totalDistance()` (default) reports meters; `totalCost()` adds each used vehicle's `fixedCost` (same units as meters); `vehiclesUsed()` minimizes the vehicle count and reports it. `plan.vehiclesUsed()` and `totalFixedCost()` are always available.
+- **Pickup and delivery.** The pickup stop's `demand` is the carried load; the delivery stop's demand is omitted or equal. Pairs stay on one vehicle in order and are dropped together (penalty per stop) when `allowDroppingStops` is on. `FIFO`/`LIFO` constrain how pairs interleave.
+- **Skills.** `StopConfig.requires(...)` restricts a stop to vehicles declaring every listed skill via `VehicleConfig.skills(...)`; a stop nobody can serve fails fast.
+- **Travel times.** `DistanceSource.fromMatrices(meters, minutes)` supplies real travel times and makes `travelSpeedKmh` irrelevant.
 
 ### Multiple knapsack
 
@@ -289,19 +369,17 @@ import opt.booking.*;
 import java.time.*;
 
 BookingSolution plan = Optimize.booking()
-        .horizon(LocalDate.of(2026, 7, 6), 1)
+        .horizon(LocalDate.of(2026, 7, 6), 5)
         .resource("Dr-Chen", r -> r
-                .available(new TimeSlot(
-                        LocalDateTime.of(2026, 7, 6, 9, 0),
-                        LocalDateTime.of(2026, 7, 6, 12, 0)))
-                .available(new TimeSlot(
-                        LocalDateTime.of(2026, 7, 6, 13, 0),
-                        LocalDateTime.of(2026, 7, 6, 17, 0))))
+                .availableDaily(LocalTime.of(9, 0), LocalTime.of(12, 0))      // mornings
+                .available(DayOfWeek.MONDAY, LocalTime.of(13, 0), LocalTime.of(17, 0))
+                .available(DayOfWeek.WEDNESDAY, LocalTime.of(13, 0), LocalTime.of(17, 0)))
         .resource("Dr-Patel", r -> r
-                .available(new TimeSlot(
+                .available(new TimeSlot(                                       // explicit slot
                         LocalDateTime.of(2026, 7, 6, 8, 0),
                         LocalDateTime.of(2026, 7, 6, 16, 0))))
         .appointment("A1", a -> a.duration(Duration.ofMinutes(30))
+                .buffer(Duration.ofMinutes(10))                                // room turnaround
                 .requiresAnyOf("Dr-Chen", "Dr-Patel"))
         .appointment("A2", a -> a.duration(Duration.ofMinutes(60))
                 .requiresAnyOf("Dr-Chen")
@@ -320,7 +398,7 @@ for (AppointmentAssignment a : plan.assignments()) {
 }
 ```
 
-Resources have one or more availability slots (lunch breaks, off-hours). Appointments may optionally declare `earliest`/`latest` time windows and an unscheduled penalty. Use `plan.unscheduled()` to list appointments that could not be placed.
+Availability may be given as explicit `TimeSlot`s, weekly windows (`available(DayOfWeek, from, to)`), or daily windows (`availableDaily(from, to)`), in any combination; overlapping windows are merged and an appointment must fit entirely inside one window. A `buffer` keeps the resource blocked after the appointment without appearing in the reported `end()`. Declarations may come in any order; times are resolved against the horizon when the problem is built. Appointments may declare `earliest`/`latest` bounds and an unscheduled penalty; `plan.unscheduled()` lists those that could not be placed.
 
 ### Cutting stock
 
@@ -348,7 +426,7 @@ for (StockAssignment a : sol.assignments()) {
 }
 ```
 
-All required pieces must be placed; the model is infeasible if total piece length exceeds total stock length. `quantity` expands a stock or piece type into multiple instances. `MinimizeWaste` minimizes total length consumed; `MinimizeStockUsed` minimizes the number of rolls used (different behaviors when rolls have different lengths).
+All required pieces must be placed; the model is infeasible if total piece length exceeds total stock length. `quantity` expands a stock or piece type into instances whose ids are `"<declared id>#<n>"` (for example `R1#2`); `StockAssignment.stockType()` and `CutPiece.pieceType()` return the declared id. `MinimizeWaste` minimizes total length consumed; `MinimizeStockUsed` minimizes the number of rolls used (different behaviors when rolls have different lengths).
 
 **2D non-guillotine cutting.** Declare a `.width(...)` on every stock and piece to switch to the 2D path: each stock becomes a sheet (length × width) and pieces are placed as rectangles with X/Y origins, subject to pairwise 2D no-overlap constraints. `MinimizeWaste` is dimension-aware — it minimizes total length consumed in 1D but total **area** consumed (`used[r] * length * width`) in 2D; `MinimizeStockUsed` (sheet count) and `MinimizeTotalCost` work the same in either dimension. Mixed 1D/2D models (some items with width, some without) are rejected. Guillotine cutting is planned; 2D non-guillotine is supported today.
 
@@ -378,12 +456,30 @@ Every `solve()` returns a `Solution` subtype exposing:
 - `isFeasible()` — `true` when status is `OPTIMAL` or `FEASIBLE`.
 - `isOptimal()` — `true` only when the solver proved global optimality.
 
+Lookups such as `MultipleKnapsackSolution.binOf(item)` or `PackingSolution.containerOf(box)` return `Optional` (empty for an unassigned or unknown id). A built problem exposes `warnings()` for non-fatal diagnostics.
+
+## Solver knobs
+
+`build()` returns an immutable problem; `solver()` on it (or directly on the builder) returns a fresh solver each call.
+
+- **Every solver** (`opt.Solver`): `timeLimit(Duration)`, `verbose(boolean)`, `solve()`.
+- **CP-SAT domains** (`opt.CpSatSolver`, all except routing): `workers(int)` (default **8**, CP-SAT's tuned portfolio size), `seed(int)` (reproducible only with `workers(1)`), `onSolution(Consumer<S>)` to receive each improving intermediate result, `warmStart(S previous)` to hint the search from an earlier feasible result (ids that no longer exist are ignored), and `cancel()` to stop a running solve and keep the best result so far.
+- **Routing** (`opt.routing.RoutingSolver`): `firstSolution(Strategy)` and `improveWith(Metaheuristic)`. OR-Tools routing search has no worker count or seed, so those knobs are deliberately absent.
+
+```java
+var problem = Optimize.jobShop()....build();
+var first = problem.solver().timeLimit(Duration.ofSeconds(10)).solve();
+var solver = problem.solver().timeLimit(Duration.ofMinutes(5)).warmStart(first);
+var better = solver.onSolution(s -> { if (s.makespan() < 100) solver.cancel(); }).solve();
+```
+
 ## Modeling notes
 
 - **Routing optimality.** Routing uses first-solution strategies plus local-search metaheuristics (e.g. SAVINGS + Guided Local Search) and does **not** prove global optimality the way CP-SAT does. `FEASIBLE` is the normal status for routing; `OPTIMAL` is reported only on the rare occasion OR-Tools proves it. Treat routing results as high-quality heuristics, not certifiably optimal solutions.
-- **No time-dependent travel.** Routing's travel time is a pure function of `(from, to)` — OR-Tools' native `RoutingModel` transit callback cannot read the arrival-time variable, so travel time cannot vary by time of day. `travelSpeedKmh` is a single global scalar, not a time-banded speed profile. Static time windows and multiple depots are fully supported; true time-dependent travel would require a CP-SAT routing solver and is not yet implemented.
-- **Soft-goal weights.** Scheduling soft goals accept an optional weight folded into the same objective as labor cost. `Goals.balanceWorkloadAcrossEmployees(weight)` defaults to **10** per minute of imbalance; `Goals.honorEmployeePreferences(weight)` defaults to **5** per satisfied preference (reward). Both are in the same units as the `totalLaborCost()` objective. Pass a larger weight (e.g. `honorEmployeePreferences(100)`) to make preferences outweigh cost savings, or a smaller one to prioritize cost.
-- **Shift placement.** `.on(DayOfWeek)` places a shift on the **first** matching date in the horizon. For recurring weekly shifts across a multi-week horizon, define one shift per occurrence (distinct ids) or use `.on(LocalDate)` to target a specific calendar date.
+- **Routing status.** A routing search that exhausts its time limit without any solution reports `UNKNOWN` (raise the limit); `INFEASIBLE` means the search space was exhausted.
+- **No time-dependent travel.** Routing's travel time is a pure function of `(from, to)` — OR-Tools' native `RoutingModel` transit callback cannot read the arrival-time variable, so travel time cannot vary by time of day. Travel times come from `DistanceSource.fromMatrices` or from the single global `travelSpeedKmh` scalar, never from a time-banded profile. Static time windows, vehicle windows, and multiple depots are fully supported; true time-dependent travel would require a CP-SAT routing solver and is not yet implemented.
+- **Soft-goal weights.** Scheduling soft goals accept an optional weight folded into the same objective as labor cost. `Goals.balanceWorkloadAcrossEmployees(weight)` defaults to **10** per minute of imbalance; `Goals.honorEmployeePreferences(weight)` defaults to **5** per satisfied preference (reward); `Goals.penalizeUnderstaffing(weight)` defaults to **100** per missing employee. All are in the same units as the `totalLaborCost()` objective (cost per hour times minutes). Pass a larger weight (e.g. `honorEmployeePreferences(100)`) to make preferences outweigh cost savings, or a smaller one to prioritize cost.
+- **Shift placement.** `.on(DayOfWeek)` and `.every(...)` place a shift on **every** matching date in the horizon; `.on(LocalDate)` targets one calendar date. Assignments carry the declared shift id plus the concrete `date()`.
 
 ## Project layout
 

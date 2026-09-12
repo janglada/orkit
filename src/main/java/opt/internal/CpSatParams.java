@@ -31,6 +31,11 @@ public final class CpSatParams {
     private boolean verbose = false;
     private final AtomicReference<CpSolver> active = new AtomicReference<>();
 
+    /** Loads the native library eagerly; see {@link AbstractCpSatSolver}. */
+    public CpSatParams() {
+        NativeLoader.ensureLoaded();
+    }
+
     /** Builds the domain result from solved values; called for the final solution and for each intermediate one. */
     @FunctionalInterface
     public interface Extractor<S extends Solution> {
