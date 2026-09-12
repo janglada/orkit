@@ -106,7 +106,7 @@ class RoutingDbExampleTest {
             // ── Solve: haversine distances, minimize total distance ──────────
             RoutingPlan plan = builder
                     .distances(DistanceSource.haversine())
-                    .minimize(Goals.totalDistance())
+                    .goal(Goals.totalDistance())
                     .solver()
                     .timeLimit(Duration.ofSeconds(5))
                     .firstSolution(Strategy.PATH_CHEAPEST_ARC)

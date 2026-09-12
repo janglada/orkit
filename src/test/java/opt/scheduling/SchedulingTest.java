@@ -129,7 +129,7 @@ class SchedulingTest {
                 .shift("mon-day", s -> s.on(DayOfWeek.MONDAY)
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0))
                         .needs(1).withSkill("RN"))
-                .minimize(totalLaborCost())
+                .goal(totalLaborCost())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);
@@ -253,7 +253,7 @@ class SchedulingTest {
                 .employee("bob",   e -> e.skills("RN").costPerHour(30))
                 .shift("s", s -> s.on(DayOfWeek.MONDAY)
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
-                .minimize(totalLaborCost())
+                .goal(totalLaborCost())
                 .build();
 
         EmployeeRoster r1 = problem.solver().timeLimit(Duration.ofSeconds(3)).solve();
@@ -345,7 +345,7 @@ class SchedulingTest {
                 .shift("mon-rn",  s -> s.on(DayOfWeek.MONDAY)   .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
                 .shift("tue-icu", s -> s.on(DayOfWeek.TUESDAY)  .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("ICU"))
                 .shift("wed-rn",  s -> s.on(DayOfWeek.WEDNESDAY).from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
-                .minimize(totalLaborCost())
+                .goal(totalLaborCost())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(roster.isFeasible()).isTrue();
@@ -417,7 +417,7 @@ class SchedulingTest {
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
                 .shift("lpn-4h", s -> s.on(DayOfWeek.MONDAY)
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(12, 0)).needs(1).withSkill("LPN"))
-                .minimize(totalLaborCost())
+                .goal(totalLaborCost())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);
@@ -557,7 +557,7 @@ class SchedulingTest {
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("ICU"))
                 .shift("rn-shift",  s -> s.on(DayOfWeek.TUESDAY)
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
-                .minimize(totalLaborCost())
+                .goal(totalLaborCost())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);
@@ -601,7 +601,7 @@ class SchedulingTest {
                 .employee("bob",   e -> e.skills("RN").costPerHour(100).prefersShift("s"))
                 .shift("s", s -> s.on(DayOfWeek.MONDAY)
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
-                .minimize(totalLaborCost())
+                .goal(totalLaborCost())
                 .prefer(honorEmployeePreferences(100_000))
                 .solver().timeLimit(Duration.ofSeconds(5)).seed(1).solve();
 
@@ -614,7 +614,7 @@ class SchedulingTest {
                 .employee("bob",   e -> e.skills("RN").costPerHour(100).prefersShift("s"))
                 .shift("s", s -> s.on(DayOfWeek.MONDAY)
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
-                .minimize(totalLaborCost())
+                .goal(totalLaborCost())
                 .prefer(honorEmployeePreferences())
                 .solver().timeLimit(Duration.ofSeconds(5)).seed(1).solve();
 

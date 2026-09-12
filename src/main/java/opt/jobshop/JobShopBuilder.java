@@ -121,8 +121,8 @@ public final class JobShopBuilder implements OptimizationProblem<JobShopSchedule
      * {@link Goals#minimizeMakespanAndTardiness(long, long)} to penalize soft due
      * dates (set per operation via {@link OperationConfig#dueBy(long)}).
      */
-    public JobShopBuilder minimize(JobShopGoal goal) {
-        if (goal == null) throw new ModelException("minimize() goal must not be null.");
+    public JobShopBuilder goal(JobShopGoal goal) {
+        if (goal == null) throw new ModelException("goal() must not be null.");
         this.goal = goal;
         return this;
     }

@@ -26,7 +26,7 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
     private final Map<String, ShiftDef> shifts = new LinkedHashMap<>();
     private final List<Rule> rules = new ArrayList<>();
     private final List<SoftGoal> softGoals = new ArrayList<>();
-    private ObjectiveGoal objective;
+    private SchedulingGoal objective;
 
     /** Sets the scheduling horizon to {@code days} consecutive days starting from {@code startDate}. */
     public SchedulingBuilder horizon(LocalDate startDate, int days) {
@@ -86,8 +86,9 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
         return this;
     }
 
-    /** Sets the primary {@link ObjectiveGoal} the solver will minimize. */
-    public SchedulingBuilder minimize(ObjectiveGoal goal) {
+    /** Sets the primary {@link SchedulingGoal} the solver optimizes. */
+    public SchedulingBuilder goal(SchedulingGoal goal) {
+        if (goal == null) throw new ModelException("goal() must not be null.");
         this.objective = goal;
         return this;
     }
@@ -132,7 +133,7 @@ public final class SchedulingBuilder implements OptimizationProblem<EmployeeRost
             int horizonDays,
             List<Rule> rules,
             List<SoftGoal> softGoals,
-            ObjectiveGoal objective
+            SchedulingGoal objective
     ) {}
 
     private static final class SchedulingProblem implements OptimizationProblem<EmployeeRoster> {

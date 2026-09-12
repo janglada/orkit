@@ -60,7 +60,7 @@ public class SmokeTest {
                 .constrain(minRestBetweenShifts(Duration.ofHours(11)))
 
                 .prefer(balanceWorkloadAcrossEmployees())
-                .minimize(totalLaborCost())
+                .goal(totalLaborCost())
 
                 .solver()
                 .timeLimit(Duration.ofSeconds(5))
@@ -122,7 +122,7 @@ public class SmokeTest {
 
                 .distances(DistanceSource.haversine())
 
-                .minimize(totalDistance())
+                .goal(totalDistance())
 
                 .solver()
                 .timeLimit(Duration.ofSeconds(10))

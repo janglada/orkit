@@ -139,7 +139,7 @@ class JobShopDbExampleTest {
 
             // Minimize makespan plus a weighted tardiness penalty so the soft due
             // dates above take effect (release dates are hard constraints regardless).
-            builder.minimize(Goals.minimizeMakespanAndTardiness(1, 5));
+            builder.goal(Goals.minimizeMakespanAndTardiness(1, 5));
 
             // ── Solve ────────────────────────────────────────────────────────
             JobShopSchedule schedule = builder.solver()

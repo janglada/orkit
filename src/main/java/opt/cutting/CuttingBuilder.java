@@ -61,8 +61,8 @@ public final class CuttingBuilder implements OptimizationProblem<CuttingSolution
     }
 
     /** Sets the minimization objective. Defaults to {@link Goals#minimizeWaste()}. */
-    public CuttingBuilder minimize(CuttingGoal goal) {
-        if (goal == null) throw new ModelException("Cutting goal must not be null.");
+    public CuttingBuilder goal(CuttingGoal goal) {
+        if (goal == null) throw new ModelException("goal() must not be null.");
         this.goal = goal;
         return this;
     }

@@ -23,9 +23,9 @@ public final class Goals {
         return new SoftGoal.HonorEmployeePreferences(rewardWeight);
     }
 
-    /** Creates the {@link ObjectiveGoal} that minimizes total scheduled labor cost. */
-    public static ObjectiveGoal totalLaborCost() {
-        return new ObjectiveGoal.MinimizeTotalLaborCost();
+    /** Creates the {@link SchedulingGoal} that minimizes total scheduled labor cost. */
+    public static SchedulingGoal totalLaborCost() {
+        return new SchedulingGoal.MinimizeTotalLaborCost();
     }
 
     private Goals() {}

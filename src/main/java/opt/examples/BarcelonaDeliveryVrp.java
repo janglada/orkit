@@ -96,7 +96,7 @@ public class BarcelonaDeliveryVrp {
 
                 .distances(DistanceSource.haversine())
 
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
 
                 .solver()
                 .timeLimit(Duration.ofSeconds(30))

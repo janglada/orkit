@@ -76,7 +76,7 @@ class CuttingTest {
                 .stock("R1", s -> s.length(60).quantity(2))
                 .stock("R2", s -> s.length(200))
                 .required("P", p -> p.length(50).quantity(2))
-                .minimize(Goals.minimizeWaste())
+                .goal(Goals.minimizeWaste())
                 .build();
 
         CuttingSolution wasteSol = wasteProblem.solver().timeLimit(Duration.ofSeconds(10)).solve();
@@ -85,7 +85,7 @@ class CuttingTest {
                 .stock("R1", s -> s.length(60).quantity(2))
                 .stock("R2", s -> s.length(200))
                 .required("P", p -> p.length(50).quantity(2))
-                .minimize(Goals.minimizeStockUsed())
+                .goal(Goals.minimizeStockUsed())
                 .build();
 
         CuttingSolution stockSol = stockProblem.solver().timeLimit(Duration.ofSeconds(10)).solve();
@@ -316,7 +316,7 @@ class CuttingTest {
                 .required("P", p -> p.length(40))
                 .required("P", p -> p.length(30))
                 .build()).isInstanceOf(ModelException.class).hasMessageContaining("Duplicate piece id");
-        assertThatThrownBy(() -> new CuttingBuilder().minimize(null))
+        assertThatThrownBy(() -> new CuttingBuilder().goal(null))
                 .isInstanceOf(ModelException.class).hasMessageContaining("goal");
     }
 
@@ -391,7 +391,7 @@ class CuttingTest {
                 .stock("cheap", s -> s.length(100).cost(1))
                 .stock("expensive", s -> s.length(100).cost(100))
                 .required("P", p -> p.length(50))
-                .minimize(Goals.minimizeTotalCost())
+                .goal(Goals.minimizeTotalCost())
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(sol.status()).isEqualTo(SolveStatus.OPTIMAL);
@@ -440,7 +440,7 @@ class CuttingTest {
                 .required("short", p -> p.length(50))
                 .required("long", p -> p.length(150))
                 .allowDroppingPieces(50)
-                .minimize(Goals.minimizeStockUsed())
+                .goal(Goals.minimizeStockUsed())
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(sol.isFeasible()).isTrue();
@@ -510,7 +510,7 @@ class CuttingTest {
                 .stock("R1", s -> s.length(10).width(10).quantity(2))
                 .stock("R2", s -> s.length(20).width(20))
                 .required("P", p -> p.length(10).width(10).quantity(2))
-                .minimize(Goals.minimizeWaste())
+                .goal(Goals.minimizeWaste())
                 .build();
 
         CuttingSolution wasteSol = wasteProblem.solver().timeLimit(Duration.ofSeconds(10)).solve();
@@ -519,7 +519,7 @@ class CuttingTest {
                 .stock("R1", s -> s.length(10).width(10).quantity(2))
                 .stock("R2", s -> s.length(20).width(20))
                 .required("P", p -> p.length(10).width(10).quantity(2))
-                .minimize(Goals.minimizeStockUsed())
+                .goal(Goals.minimizeStockUsed())
                 .build();
 
         CuttingSolution stockSol = stockProblem.solver().timeLimit(Duration.ofSeconds(10)).solve();

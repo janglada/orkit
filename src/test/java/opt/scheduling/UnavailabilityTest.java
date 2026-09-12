@@ -60,7 +60,7 @@ class UnavailabilityTest {
                 .shift("tue-shift", s -> s.on(DayOfWeek.TUESDAY)
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0))
                         .needs(1).withSkill("RN"))
-                .minimize(Goals.totalLaborCost())
+                .goal(Goals.totalLaborCost())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(roster.isFeasible()).isTrue();
@@ -97,7 +97,7 @@ class UnavailabilityTest {
                 .shift("wed-shift", s -> s.on(DayOfWeek.WEDNESDAY)
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0))
                         .needs(1).withSkill("RN"))
-                .minimize(Goals.totalLaborCost())
+                .goal(Goals.totalLaborCost())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);
@@ -138,7 +138,7 @@ class UnavailabilityTest {
                 .employee("bob",   e -> e.skills("RN"))
                 .shift("thu-shift", s -> s.on(DayOfWeek.THURSDAY)
                         .from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
-                .minimize(Goals.totalLaborCost())
+                .goal(Goals.totalLaborCost())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(roster.isFeasible()).isTrue();
@@ -254,7 +254,7 @@ class UnavailabilityTest {
                 .employee("bob",   e -> e.skills("RN").costPerHour(50))
                 .shift("mon", s -> s.on(DayOfWeek.MONDAY).from(LocalTime.of(8,0)).to(LocalTime.of(16,0)).needs(1).withSkill("RN"))
                 .shift("tue", s -> s.on(DayOfWeek.TUESDAY).from(LocalTime.of(8,0)).to(LocalTime.of(16,0)).needs(1).withSkill("RN"))
-                .minimize(Goals.totalLaborCost())
+                .goal(Goals.totalLaborCost())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(roster.status()).isEqualTo(SolveStatus.OPTIMAL);

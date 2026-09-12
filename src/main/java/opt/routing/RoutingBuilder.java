@@ -101,8 +101,9 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         return this;
     }
 
-    /** Sets the minimization objective; defaults to {@link Goals#totalDistance()}. */
-    public RoutingBuilder minimize(RoutingGoal routingGoal) {
+    /** Sets the optimization goal; defaults to {@link Goals#totalDistance()}. */
+    public RoutingBuilder goal(RoutingGoal routingGoal) {
+        if (routingGoal == null) throw new ModelException("goal() must not be null.");
         this.goal = routingGoal;
         return this;
     }

@@ -94,7 +94,7 @@ public class HospitalNurseScheduling {
         // ── Goals ─────────────────────────────────────────────────────────────
         builder.prefer(balanceWorkloadAcrossEmployees())
                .prefer(honorEmployeePreferences())
-               .minimize(totalLaborCost());
+               .goal(totalLaborCost());
 
         // ── Solve ─────────────────────────────────────────────────────────────
         System.out.println("\nSolving (30 s time limit, 8 workers)…");

@@ -962,7 +962,7 @@ class JobShopTest {
     void softDueDatePastOptimumYieldsZeroTardiness() {
         JobShopSchedule schedule = Optimize.jobShop()
                 .machines("M1")
-                .minimize(Goals.minimizeTardiness(2))
+                .goal(Goals.minimizeTardiness(2))
                 .job("J1", j -> j.operation().on("M1").takes(5).dueBy(100))
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
@@ -978,7 +978,7 @@ class JobShopTest {
         // Op takes 5, due at 3 ⇒ minimum tardiness = 5 - 3 = 2; objective = 2 * 2 = 4.
         JobShopSchedule schedule = Optimize.jobShop()
                 .machines("M1")
-                .minimize(Goals.minimizeTardiness(2))
+                .goal(Goals.minimizeTardiness(2))
                 .job("J1", j -> j.operation().on("M1").takes(5).dueBy(3))
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
@@ -995,7 +995,7 @@ class JobShopTest {
         // objective = 1 * 5 (makespan) + 100 * 2 (tardiness) = 205.
         JobShopSchedule schedule = Optimize.jobShop()
                 .machines("M1")
-                .minimize(Goals.minimizeMakespanAndTardiness(1, 100))
+                .goal(Goals.minimizeMakespanAndTardiness(1, 100))
                 .job("J1", j -> j.operation().on("M1").takes(5).dueBy(3))
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
@@ -1054,7 +1054,7 @@ class JobShopTest {
                 .isInstanceOf(ModelException.class).hasMessageContaining("> 0");
         assertThatThrownBy(() -> Goals.minimizeMakespanAndTardiness(0, 1))
                 .isInstanceOf(ModelException.class).hasMessageContaining("> 0");
-        assertThatThrownBy(() -> Optimize.jobShop().machines("M1").minimize(null))
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1").goal(null))
                 .isInstanceOf(ModelException.class).hasMessageContaining("null");
     }
 

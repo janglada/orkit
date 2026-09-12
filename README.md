@@ -116,12 +116,12 @@ Each operation may carry a hard time window and/or a soft due date, set via
   `MinimizeMakespan` goal.
 
 `releaseAt` + `duration` must not exceed `deadlineAt` (rejected at build time).
-The objective is chosen with `.minimize(...)`:
+The objective is chosen with `.goal(...)`:
 
 ```java
 JobShopSchedule schedule = Optimize.jobShop()
         .machines("MILL", "LATHE")
-        .minimize(Goals.minimizeMakespanAndTardiness(1, 10)) // makespan + 10·tardiness
+        .goal(Goals.minimizeMakespanAndTardiness(1, 10)) // makespan + 10·tardiness
         .job("J1", j -> j.operation().on("MILL").takes(10).releaseAt(5)
                 .then().on("LATHE").takes(15).dueBy(40))
         .job("J2", j -> j.operation().on("LATHE").takes(8).deadlineAt(20))
@@ -155,7 +155,7 @@ EmployeeRoster roster = Optimize.scheduling()
         .constrain(minRestBetweenShifts(Duration.ofHours(11)))
         .prefer(balanceWorkloadAcrossEmployees())
         .prefer(honorEmployeePreferences())
-        .minimize(totalLaborCost())
+        .goal(totalLaborCost())
         .solver()
         .timeLimit(Duration.ofSeconds(15))
         .workers(4)
@@ -178,7 +178,7 @@ RoutingPlan plan = Optimize.vehicleRouting()
         .stop("Cust-B", s -> s.at(41.38, 2.19).demand(3)
                 .serviceTime(Duration.ofMinutes(10)))
         .distances(DistanceSource.haversine())
-        .minimize(Goals.totalDistance())
+        .goal(Goals.totalDistance())
         .solver()
         .timeLimit(Duration.ofSeconds(15))
         .firstSolution(Strategy.SAVINGS)
@@ -203,7 +203,7 @@ RoutingPlan plan = Optimize.vehicleRouting()
         .stop("Cust-A", s -> s.at(41.39, 2.16).demand(4))
         .stop("Cust-B", s -> s.at(41.40, 2.19).demand(3))
         .distances(DistanceSource.haversine())
-        .minimize(Goals.totalDistance())
+        .goal(Goals.totalDistance())
         .solver().timeLimit(Duration.ofSeconds(15)).solve();
 
 for (Route r : plan.routes()) {
@@ -307,7 +307,7 @@ BookingSolution plan = Optimize.booking()
                 .requiresAnyOf("Dr-Chen")
                 .earliest(LocalDateTime.of(2026, 7, 6, 10, 0))
                 .penaltyIfUnscheduled(50))
-        .minimize(Goals.minimizeUnscheduledPenalty())
+        .goal(Goals.minimizeUnscheduledPenalty())
         .solver()
         .timeLimit(Duration.ofSeconds(10))
         .workers(4)
@@ -335,7 +335,7 @@ CuttingSolution sol = Optimize.cuttingStock()
         .required("Bar-A", p -> p.length(1500).quantity(8))
         .required("Bar-B", p -> p.length(1200).quantity(6))
         .required("Bar-C", p -> p.length(900).quantity(4))
-        .minimize(Goals.minimizeWaste())
+        .goal(Goals.minimizeWaste())
         .solver()
         .timeLimit(Duration.ofSeconds(15))
         .workers(4)
@@ -357,7 +357,7 @@ CuttingSolution sol = Optimize.cuttingStock()
         .stock("sheet", s -> s.length(200).width(150).cost(120).quantity(2))
         .required("blank-A", p -> p.length(60).width(40).quantity(4))
         .required("blank-B", p -> p.length(50).width(30).quantity(3))
-        .minimize(Goals.minimizeWaste())   // minimizes total area consumed
+        .goal(Goals.minimizeWaste())   // minimizes total area consumed
         .solver().timeLimit(Duration.ofSeconds(15)).workers(8).solve();
 for (StockAssignment a : sol.assignments()) {
     System.out.printf("  %s (%dx%d): %d pieces, area waste=%d%n",

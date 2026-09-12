@@ -22,6 +22,7 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
     private final List<BinDef> bins = new ArrayList<>();
     private final Set<String> itemIds = new HashSet<>();
     private final Set<String> binIds = new HashSet<>();
+    private KnapsackGoal goal = Goals.maximizeProfit();
 
     /** Declares a knapsack (bin) with the given unique id and configures it via the {@link BinConfig} lambda. */
     public MultipleKnapsackBuilder bin(String id, Consumer<BinConfig> config) {
@@ -56,9 +57,16 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
         return this;
     }
 
-    /** Builds an immutable, reusable problem instance (maximizes total profit). */
+    /** Sets the optimization goal. Defaults to {@link Goals#maximizeProfit()}. */
+    public MultipleKnapsackBuilder goal(KnapsackGoal goal) {
+        if (goal == null) throw new ModelException("goal() must not be null.");
+        this.goal = goal;
+        return this;
+    }
+
+    /** Builds an immutable, reusable problem instance. */
     public OptimizationProblem<MultipleKnapsackSolution> build() {
-        return new MultipleKnapsackProblem(List.copyOf(items), List.copyOf(bins));
+        return new MultipleKnapsackProblem(List.copyOf(items), List.copyOf(bins), goal);
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
@@ -73,15 +81,17 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
 
         private final List<ItemDef> items;
         private final List<BinDef> bins;
+        private final KnapsackGoal goal;
 
-        MultipleKnapsackProblem(List<ItemDef> items, List<BinDef> bins) {
+        MultipleKnapsackProblem(List<ItemDef> items, List<BinDef> bins, KnapsackGoal goal) {
             this.items = items;
             this.bins = bins;
+            this.goal = goal;
         }
 
         @Override
         public Solver<MultipleKnapsackSolution> solver() {
-            return new MultipleKnapsackSolver(items, bins);
+            return new MultipleKnapsackSolver(items, bins, goal);
         }
     }
 
@@ -89,14 +99,16 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
 
         private final List<ItemDef> items;
         private final List<BinDef> bins;
+        private final KnapsackGoal goal;
         private Duration timeLimit = Duration.ofMinutes(1);
         private int workers = 1;
         private long seed = 0;
         private boolean verbose = false;
 
-        MultipleKnapsackSolver(List<ItemDef> items, List<BinDef> bins) {
+        MultipleKnapsackSolver(List<ItemDef> items, List<BinDef> bins, KnapsackGoal goal) {
             this.items = items;
             this.bins = bins;
+            this.goal = goal;
         }
 
         @Override public Solver<MultipleKnapsackSolution> timeLimit(Duration limit) { timeLimit = limit; return this; }
@@ -106,7 +118,7 @@ public final class MultipleKnapsackBuilder implements OptimizationProblem<Multip
 
         @Override
         public MultipleKnapsackSolution solve() {
-            return new CpSatMultipleKnapsackSolver(items, bins)
+            return new CpSatMultipleKnapsackSolver(items, bins, goal)
                     .timeLimit(timeLimit)
                     .workers(workers)
                     .seed(seed)

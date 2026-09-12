@@ -41,7 +41,7 @@ public final class BookingBuilder implements OptimizationProblem<BookingSolution
 
     /** Sets the objective. Defaults to {@link Goals#maximizeScheduledAppointments()}. */
     public BookingBuilder goal(BookingGoal g) {
-        if (g == null) throw new ModelException("goal must not be null.");
+        if (g == null) throw new ModelException("goal() must not be null.");
         this.goal = g;
         return this;
     }

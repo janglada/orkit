@@ -41,7 +41,7 @@ public class SteelRollCuttingStock {
                 .required("beam-900",  p -> p.length(900).quantity(5))
                 .required("beam-600",  p -> p.length(600).quantity(4))
 
-                .minimize(Goals.minimizeWaste())
+                .goal(Goals.minimizeWaste())
                 .solver()
                 .timeLimit(Duration.ofSeconds(15))
                 .workers(8)

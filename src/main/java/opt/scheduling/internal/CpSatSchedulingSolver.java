@@ -22,7 +22,7 @@ public final class CpSatSchedulingSolver {
     private final int horizonDays;
     private final List<Rule> rules;
     private final List<SoftGoal> softGoals;
-    private final ObjectiveGoal objective;
+    private final SchedulingGoal objective;
 
     private double timeLimitSeconds = 60;
     private int workers = 1;
@@ -36,7 +36,7 @@ public final class CpSatSchedulingSolver {
                                  int horizonDays,
                                  List<Rule> rules,
                                  List<SoftGoal> softGoals,
-                                 ObjectiveGoal objective) {
+                                 SchedulingGoal objective) {
         this.employees = List.copyOf(employees);
         this.shifts = List.copyOf(shifts);
         this.horizonStart = horizonStart;
@@ -66,7 +66,7 @@ public final class CpSatSchedulingSolver {
      * The model fixes impossible assignments to zero (skill or availability mismatches),
      * enforces each shift's staffing requirement as an equality, applies weekly hour caps and
      * all registered hard {@link Rule}s, and finally minimizes the combined objective (primary
-     * {@link ObjectiveGoal} plus any {@link SoftGoal} penalties/rewards).
+     * {@link SchedulingGoal} plus any {@link SoftGoal} penalties/rewards).
      * @return the solver's status, objective value, runtime, and resulting assignments
      */
     public EmployeeRosterResult solve() {
@@ -166,7 +166,7 @@ public final class CpSatSchedulingSolver {
         LinearExprBuilder objExpr = LinearExpr.newBuilder();
         boolean hasObjective = false;
 
-        if (objective instanceof ObjectiveGoal.MinimizeTotalLaborCost) {
+        if (objective instanceof SchedulingGoal.MinimizeTotalLaborCost) {
             for (int e = 0; e < E; e++) {
                 int rate = employees.get(e).costPerHour();
                 if (rate > 0) {

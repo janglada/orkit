@@ -129,7 +129,7 @@ class SchedulingDbExampleTest {
                     .constrain(maxConsecutiveWorkDays(5))
                     .prefer(balanceWorkloadAcrossEmployees())
                     .prefer(honorEmployeePreferences())
-                    .minimize(totalLaborCost());
+                    .goal(totalLaborCost());
 
             // ── Solve ───────────────────────────────────────────────────────
             System.out.println("╔═══════════════════════════════════════════════╗");

@@ -28,7 +28,7 @@ class RoutingTest {
                 .stop("B", s -> s.at(41.380, 2.155).demand(15))
                 .stop("C", s -> s.at(41.395, 2.180).demand(20))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -58,7 +58,7 @@ class RoutingTest {
                 .stop("C", s -> s.at(41.395, 2.175).demand(20))
                 .stop("D", s -> s.at(41.375, 2.162).demand(20))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -84,7 +84,7 @@ class RoutingTest {
                 .stop("lateStop",  s -> s.at(41.395, 2.162).demand(1)
                         .openFrom(LocalTime.of(14, 0)).closeAt(LocalTime.of(15, 0)))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -106,7 +106,7 @@ class RoutingTest {
                 .stop("C", s -> s.at(41.395, 2.175).demand(10))
                 .distances(DistanceSource.haversine())
                 .allowDroppingStops(1)
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -129,7 +129,7 @@ class RoutingTest {
                 .stop("A", s -> s.at(0.0, 0.0).demand(1))
                 .stop("B", s -> s.at(0.0, 0.0).demand(1))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -172,7 +172,7 @@ class RoutingTest {
                 .stop("B", s -> s.at(41.385, 2.155).demand(10))
                 .stop("C", s -> s.at(41.395, 2.175).demand(10))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -201,7 +201,7 @@ class RoutingTest {
                 .stop("C", s -> s.at(0.0, 0.0).demand(15))
                 .stop("D", s -> s.at(0.0, 0.0).demand(30))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -227,7 +227,7 @@ class RoutingTest {
                 .stop("B", s -> s.at(41.385, 2.155).demand(10))
                 .stop("C", s -> s.at(41.395, 2.175).demand(10))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -248,7 +248,7 @@ class RoutingTest {
                 .stop("C", s -> s.at(41.395, 2.175).demand(10))
                 .distances(DistanceSource.haversine())
                 .allowDroppingStops(1)
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -276,7 +276,7 @@ class RoutingTest {
                 .vehicle("v1", v -> v.capacity(100))
                 .stop("near", s -> s.at(41.390, 2.169).demand(1))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -324,7 +324,7 @@ class RoutingTest {
                 .stop("C", s -> s.at(41.395, 2.175).demand(10))
                 .distances(DistanceSource.haversine())
                 .allowDroppingStops(1_000_000_000L) // penalty far exceeds any route cost
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -351,7 +351,7 @@ class RoutingTest {
                 .stop("Near", s -> s.at(0.0, 0.0).demand(1))
                 .stop("Far",  s -> s.at(0.0, 0.0).demand(1))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -391,7 +391,7 @@ class RoutingTest {
                 .stop("A", s -> s.at(0.0, 0.0).demand(1))
                 .stop("B", s -> s.at(0.0, 0.0).demand(1))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -420,7 +420,7 @@ class RoutingTest {
                 .stop("light", s -> s.at(0.0, 0.0).demand(5))
                 .stop("heavy", s -> s.at(0.0, 0.0).demand(80))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -461,7 +461,7 @@ class RoutingTest {
                 .stop("A", s -> s.at(41.400, 2.165).demand(10))
                 .stop("B", s -> s.at(41.385, 2.155).demand(10))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .build();
 
         RoutingPlan r1 = problem.solver().timeLimit(Duration.ofSeconds(5)).solve();
@@ -529,7 +529,7 @@ class RoutingTest {
                 .stop("waypoint", s -> s.at(41.395, 2.165).demand(0))
                 .stop("delivery", s -> s.at(41.385, 2.170).demand(10))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -555,7 +555,7 @@ class RoutingTest {
                 .stop("B", s -> s.at(41.385, 2.170).demand(5))
                 .distances(DistanceSource.haversine())
                 .travelSpeedKmh(25.0)   // urban speed
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -577,7 +577,7 @@ class RoutingTest {
                 .vehicle("v1", v -> v.capacity(100))
                 .stop("only", s -> s.at(0.0, 0.0).demand(1))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();
@@ -597,7 +597,7 @@ class RoutingTest {
                 .vehicle("v1", v -> v.capacity(10))
                 .stop("A", s -> s.at(41.400, 2.170).demand(100))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.status()).isEqualTo(SolveStatus.INFEASIBLE);
@@ -613,7 +613,7 @@ class RoutingTest {
                 .vehicle("v1", v -> v.capacity(10).maxDistanceMeters(50))
                 .stop("A", s -> s.at(41.500, 2.300).demand(1))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.status()).isEqualTo(SolveStatus.INFEASIBLE);
@@ -806,7 +806,7 @@ class RoutingTest {
                 .stop("A", s -> s.at(41.400, 2.165).demand(10))
                 .stop("B", s -> s.at(41.385, 2.155).demand(10))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .build();
 
         // The key assertion: build() returns RoutingProblem, not just OptimizationProblem.
@@ -841,7 +841,7 @@ class RoutingTest {
                 .stop("A", s -> s.at(0.0, 0.0).demand(1))
                 .stop("B", s -> s.at(0.0, 0.0).demand(1))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver()
                 .timeLimit(Duration.ofSeconds(5))
                 .firstSolution(Strategy.PATH_CHEAPEST_ARC)
@@ -883,7 +883,7 @@ class RoutingTest {
                 .vehicle("v1", v -> v.capacity(100).startsAt("d1").endsAt("d2"))
                 .stop("A", s -> s.at(0.0, 0.0).demand(1))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver()
                 .timeLimit(Duration.ofSeconds(5))
                 .firstSolution(Strategy.PATH_CHEAPEST_ARC)
@@ -946,7 +946,7 @@ class RoutingTest {
                 .vehicle("v1", v -> v.capacity(100))   // no startsAt → default depot d1
                 .stop("A", s -> s.at(0.0, 0.0).demand(1))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver()
                 .timeLimit(Duration.ofSeconds(5))
                 .firstSolution(Strategy.PATH_CHEAPEST_ARC)
@@ -995,7 +995,7 @@ class RoutingTest {
                 .vehicle("v1", v -> v.capacity(100))
                 .stop("S", s -> s.at(0.0, 0.0).demand(1))
                 .distances(DistanceSource.fromMatrix(matrix))
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
 
         assertThat(plan.isFeasible()).isTrue();

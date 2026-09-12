@@ -99,7 +99,7 @@ class NativeResourceTest {
                 .stop("B", s -> s.at(41.380, 2.155).demand(15))
                 .stop("C", s -> s.at(41.395, 2.180).demand(20))
                 .distances(DistanceSource.haversine())
-                .minimize(Goals.totalDistance())
+                .goal(Goals.totalDistance())
                 .solver().timeLimit(Duration.ofMillis(100)).solve();
         assertThat(plan.isFeasible()).isTrue();
     }

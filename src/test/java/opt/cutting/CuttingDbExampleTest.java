@@ -66,7 +66,7 @@ class CuttingDbExampleTest {
                 totalPieceLength += length * quantity;
                 builder.required(id, p -> p.length(length).quantity(quantity));
             }
-            builder.minimize(Goals.minimizeTotalCost());
+            builder.goal(Goals.minimizeTotalCost());
 
             // ── Solve ─────────────────────────────────────────────────────────
             CuttingSolution sol = builder.solver()
@@ -179,7 +179,7 @@ class CuttingDbExampleTest {
                 totalPieceArea += length * width * quantity;
                 builder.required(id, p -> p.length(length).width((int) width).quantity(quantity));
             }
-            builder.minimize(Goals.minimizeWaste());
+            builder.goal(Goals.minimizeWaste());
 
             // ── Solve ─────────────────────────────────────────────────────────
             CuttingSolution sol = builder.solver()

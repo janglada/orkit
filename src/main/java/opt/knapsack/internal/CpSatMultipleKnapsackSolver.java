@@ -4,6 +4,7 @@ import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
 import opt.knapsack.BinAssignment;
+import opt.knapsack.KnapsackGoal;
 import opt.knapsack.MultipleKnapsackSolution;
 
 import java.time.Duration;
@@ -21,15 +22,18 @@ public final class CpSatMultipleKnapsackSolver {
 
     private final List<ItemDef> items;
     private final List<BinDef> bins;
+    private final KnapsackGoal goal;
 
     private double timeLimitSeconds = 60;
     private int workers = 1;
     private long seed = 0;
     private boolean verbose = false;
 
-    public CpSatMultipleKnapsackSolver(List<ItemDef> items, List<BinDef> bins) {
+    /** Creates a solver for the given items, bins, and goal. Internal; obtain via {@link opt.knapsack.MultipleKnapsackBuilder#solver()}. */
+    public CpSatMultipleKnapsackSolver(List<ItemDef> items, List<BinDef> bins, KnapsackGoal goal) {
         this.items = List.copyOf(items);
         this.bins = List.copyOf(bins);
+        this.goal = (goal == null) ? new KnapsackGoal.MaximizeTotalProfit() : goal;
     }
 
     /** Sets the maximum wall-clock time the solver may run before giving up. */
@@ -95,7 +99,9 @@ public final class CpSatMultipleKnapsackSolver {
                 obj.addTerm(x[i][b], profit);
             }
         }
-        model.maximize(obj);
+        switch (goal) {
+            case KnapsackGoal.MaximizeTotalProfit g -> model.maximize(obj);
+        }
 
         // Solve
         CpSolver solver = new CpSolver();
