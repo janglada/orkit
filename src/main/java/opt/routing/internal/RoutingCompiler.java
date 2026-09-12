@@ -108,6 +108,22 @@ public final class RoutingCompiler {
 
         RoutingIndexManager manager = new RoutingIndexManager(numNodes, numVehicles, starts, ends);
         RoutingModel routing        = new RoutingModel(manager);
+        try {
+            return search(manager, routing, distMatrix, startDepotIdOf);
+        } finally {
+            // SWIG wrappers hold native (off-heap) memory; the Java GC reclaims it only
+            // via finalization, which is deprecated and non-deterministic. Delete
+            // explicitly so native memory is freed on every exit path.
+            routing.delete();  // also releases registered callbacks and dimensions
+            manager.delete();
+        }
+    }
+
+    /** Builds dimensions/callbacks on the model, runs the search, extracts the plan. */
+    private RoutingPlan search(RoutingIndexManager manager, RoutingModel routing,
+                               long[][] distMatrix, String[] startDepotIdOf) {
+        int numDepots   = depots.size();
+        int numNodes    = numDepots + stops.size();
 
         // ── Transit model — limitation: NOT time-dependent ──────────────────────
         // OR-Tools' native RoutingModel transit callbacks take only (fromNode, toNode)
@@ -190,6 +206,19 @@ public final class RoutingCompiler {
         Assignment solution = routing.solveWithParameters(params);
         java.time.Duration runtime = java.time.Duration.ofMillis(System.currentTimeMillis() - startMs);
         int routingStatus = routing.status();
+        try {
+            return extractPlan(manager, routing, solution, routingStatus, runtime, startDepotIdOf);
+        } finally {
+            if (solution != null) solution.delete();  // native SWIG object
+        }
+    }
+
+    /** Extracts a pure-Java {@link RoutingPlan} from the native assignment. */
+    private RoutingPlan extractPlan(RoutingIndexManager manager, RoutingModel routing,
+                                    Assignment solution, int routingStatus,
+                                    java.time.Duration runtime, String[] startDepotIdOf) {
+        int numDepots   = depots.size();
+        int numVehicles = vehicles.size();
 
         if (solution == null) {
             SolveStatus status = mapStatus(routingStatus, false);
