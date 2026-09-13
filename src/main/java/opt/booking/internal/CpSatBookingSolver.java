@@ -72,19 +72,23 @@ public final class CpSatBookingSolver {
                 long startMin = (a.earliestOffset() != null) ? a.earliestOffset() : 0L;
                 long endMax = (a.latestOffset() != null) ? a.latestOffset() : horizonMinutes;
                 long startRangeMax = Math.max(0, endMax - a.durationMinutes());
-                if (startRangeMax < startMin) {
-                    // Window too tight to fit on this resource — collapse the domain so CP-SAT forces x = 0.
-                    startRangeMax = startMin;
-                }
+                // A window too tight to hold the appointment (for example earliest() close to the
+                // horizon end) means it can never be present on this resource. Force absence rather
+                // than letting the domains contradict each other, which would make the whole model
+                // infeasible instead of leaving one appointment unscheduled.
+                boolean fits = startRangeMax >= startMin;
+                if (!fits) startRangeMax = startMin;
 
                 BoolVar pres = model.newBoolVar("x_" + a.id() + "_" + rid);
+                if (!fits) model.addEquality(pres, 0);
                 IntVar start = model.newIntVar(startMin, startRangeMax, "s_" + a.id() + "_" + rid);
                 // end = start + duration is what windows and latest() constrain and what is reported;
                 // the resource is occupied for duration + buffer, which may spill past both.
-                IntVar end = model.newIntVar(0, horizonMinutes, "e_" + a.id() + "_" + rid);
+                long endUb = Math.max(horizonMinutes, startRangeMax + a.durationMinutes());
+                IntVar end = model.newIntVar(0, endUb, "e_" + a.id() + "_" + rid);
                 model.addEquality(end, LinearExpr.newBuilder().add(start).add(a.durationMinutes()).build());
                 long occupied = a.durationMinutes() + a.bufferMinutes();
-                IntVar occEnd = model.newIntVar(0, horizonMinutes + a.bufferMinutes(), "oe_" + a.id() + "_" + rid);
+                IntVar occEnd = model.newIntVar(0, endUb + a.bufferMinutes(), "oe_" + a.id() + "_" + rid);
                 IntervalVar interval = model.newOptionalIntervalVar(
                         start, model.newConstant(occupied), occEnd, pres,
                         "iv_" + a.id() + "_" + rid);

@@ -1,5 +1,6 @@
 package opt.routing;
 
+import opt.ModelException;
 import opt.Solver;
 import opt.routing.internal.RoutingCompiler;
 import opt.routing.internal.RoutingSpec;
@@ -28,7 +29,12 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
     }
 
     /** Sets the wall-clock time budget for the search; default 30 seconds. */
-    @Override public RoutingSolver timeLimit(Duration limit) { this.timeLimit = limit;   return this; }
+    @Override
+    public RoutingSolver timeLimit(Duration limit) {
+        if (limit == null) throw new ModelException("timeLimit must not be null.");
+        this.timeLimit = limit;
+        return this;
+    }
     /** Enables OR-Tools search log output. */
     @Override public RoutingSolver verbose(boolean log)       { this.verbose = log;       return this; }
 

@@ -13,6 +13,11 @@ A fluent Java 21 DSL over [Google OR-Tools](https://developers.google.com/optimi
 mvn test
 ```
 
+The suite is about 400 JUnit tests, including per-domain invariant validators, database-driven
+examples, a child-JVM native-memory guard, and a child-JVM check that builders work without
+`Optimize`. JaCoCo writes a line-coverage report to `target/site/jacoco/index.html` on every
+`mvn test` (about 99% of `src/main` lines, excluding the examples).
+
 ## Run examples
 
 Seven runnable mains illustrate each domain. The `exec-maven-plugin` is already wired into the build; pass the main class explicitly:
