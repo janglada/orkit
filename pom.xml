@@ -12,8 +12,8 @@
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ortools.version>9.11.4210</ortools.version>
-<!-- TODO       <ortools.version>9.15.6755</ortools.version>-->
+<!--        <ortools.version>9.11.4210</ortools.version>-->
+    <ortools.version>9.15.6755</ortools.version>
         <junit.version>5.11.0</junit.version>
         <sqlite.version>3.46.1.3</sqlite.version>
     </properties>

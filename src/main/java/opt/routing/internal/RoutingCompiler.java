@@ -251,7 +251,15 @@ public final class RoutingCompiler {
                 throw new ModelException("Stop '" + stop.id() + "' requires skills " + stop.requiredSkills()
                         + " but no vehicle has them.");
             }
-            routing.setAllowedVehiclesForIndex(allowed, manager.nodeToIndex(numDepots + i));
+            // Prune the node's vehicle variable instead of RoutingModel.setAllowedVehiclesForIndex,
+            // whose only binding takes an absl::Span that the Java wrapper cannot construct. Removing
+            // the unqualified vehicles is equivalent and, unlike a member constraint over the allowed
+            // set, leaves -1 (the "not served" value) in the domain, so the stop can still be dropped.
+            Set<Integer> qualified = Arrays.stream(allowed).boxed().collect(Collectors.toSet());
+            IntVar vehicleVar = routing.vehicleVar(manager.nodeToIndex(numDepots + i));
+            for (int v = 0; v < numVehicles; v++) {
+                if (!qualified.contains(v)) vehicleVar.removeValue(v);
+            }
         }
 
         // Search parameters
@@ -260,7 +268,7 @@ public final class RoutingCompiler {
         long startMs = System.currentTimeMillis();
         Assignment solution = routing.solveWithParameters(params);
         java.time.Duration runtime = java.time.Duration.ofMillis(System.currentTimeMillis() - startMs);
-        int routingStatus = routing.status();
+        RoutingSearchStatus.Value routingStatus = routing.status();
         Model model = new Model(manager, routing, distMatrix, signedDemands, startDepotIdOf,
                 useTime, useCapacity, deliveryStopIds);
         try {
@@ -278,7 +286,8 @@ public final class RoutingCompiler {
     }
 
     /** Extracts a pure-Java {@link RoutingPlan} from the native assignment. */
-    private RoutingPlan extractPlan(Model m, Assignment solution, int routingStatus, java.time.Duration runtime) {
+    private RoutingPlan extractPlan(Model m, Assignment solution, RoutingSearchStatus.Value routingStatus,
+                                    java.time.Duration runtime) {
         int numDepots   = depots.size();
         int numVehicles = vehicles.size();
         RoutingModel routing = m.routing();
@@ -359,15 +368,17 @@ public final class RoutingCompiler {
      * model may well be feasible and the fix is a larger time limit. {@code ROUTING_FAIL}
      * (search exhausted without a solution) is reported as {@code INFEASIBLE}.
      */
-    private static SolveStatus mapStatus(int routingStatus, boolean hasSolution) {
-        if (routingStatus == RoutingModel.ROUTING_OPTIMAL)    return SolveStatus.OPTIMAL;
-        if (routingStatus == RoutingModel.ROUTING_INFEASIBLE) return SolveStatus.INFEASIBLE;
-        if (routingStatus == RoutingModel.ROUTING_INVALID)    return SolveStatus.MODEL_INVALID;
-        if (hasSolution) return SolveStatus.FEASIBLE;
-        // No solution found.
-        if (routingStatus == RoutingModel.ROUTING_FAIL)         return SolveStatus.INFEASIBLE;
-        if (routingStatus == RoutingModel.ROUTING_FAIL_TIMEOUT) return SolveStatus.UNKNOWN;
-        return SolveStatus.UNKNOWN;
+    private static SolveStatus mapStatus(RoutingSearchStatus.Value routingStatus, boolean hasSolution) {
+        return switch (routingStatus) {
+            case ROUTING_OPTIMAL   -> SolveStatus.OPTIMAL;
+            case ROUTING_INVALID   -> SolveStatus.MODEL_INVALID;
+            case ROUTING_INFEASIBLE -> SolveStatus.INFEASIBLE;
+            // Search space exhausted, so no solution exists unless one was nevertheless collected.
+            case ROUTING_FAIL      -> hasSolution ? SolveStatus.FEASIBLE : SolveStatus.INFEASIBLE;
+            // Otherwise the search either succeeded or simply ran out of time; with nothing to
+            // show for it the honest answer is UNKNOWN, since the model may well be feasible.
+            default                -> hasSolution ? SolveStatus.FEASIBLE : SolveStatus.UNKNOWN;
+        };
     }
 
     // ── Distance / time matrices ─────────────────────────────────────────────

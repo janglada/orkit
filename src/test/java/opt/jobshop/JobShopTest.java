@@ -553,8 +553,11 @@ class JobShopTest {
                 .setupTimeOn("MILL", "ALU", "STEEL", 20)    // MILL override
                 .job("J1", j -> j.operation().on("MILL").type("ALU").takes(3)
                         .then().on("MILL").type("STEEL").takes(3))
+                // The deadline leaves LATHE no slack: it fits only if LATHE uses the global 12
+                // (3 + 12 + 3 = 18), so applying MILL's override there would be infeasible.
+                // Without it LATHE could idle inside the 26-unit makespan and any gap >= 12 would do.
                 .job("J2", j -> j.operation().on("LATHE").type("ALU").takes(3)
-                        .then().on("LATHE").type("STEEL").takes(3))
+                        .then().on("LATHE").type("STEEL").takes(3).deadlineAt(18))
                 .solver().timeLimit(Duration.ofSeconds(10)).solve();
 
         // MILL: 3 + 20 + 3 = 26 ; LATHE: 3 + 12 + 3 = 18 ; parallel => 26.
