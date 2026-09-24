@@ -1,10 +1,10 @@
 # OR-Tools High-Level DSL
 
-A fluent Java 21 DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.15, covering seven optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, **multiple knapsack**, **container loading (3D bin packing)**, **resource booking (appointment scheduling)**, and **cutting stock**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
+A fluent Java 25 DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.15, covering seven optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, **multiple knapsack**, **container loading (3D bin packing)**, **resource booking (appointment scheduling)**, and **cutting stock**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
 
 ## Requirements
 
-- **Java 21+** and **Maven**.
+- **Java 25+** and **Maven**.
 - OR-Tools native library is pulled automatically per platform. The POM ships the `ortools-linux-x86-64` dependency (runtime scope); `com.google.ortools.Loader` auto-extracts it at startup. macOS arm64 or Windows x86-64 users should swap that artifact for `ortools-darwin-aarch64` or `ortools-win32-x86-64` respectively (same `${ortools.version}`).
 
 ## Build & test
@@ -18,32 +18,7 @@ examples, a child-JVM native-memory guard, and a child-JVM check that builders w
 `Optimize`. JaCoCo writes a line-coverage report to `target/site/jacoco/index.html` on every
 `mvn test` (about 99% of `src/main` lines, excluding the examples).
 
-## Run examples
 
-Seven runnable mains illustrate each domain. The `exec-maven-plugin` is already wired into the build; pass the main class explicitly:
-
-```bash
-# PCB flexible job shop (8 board types, 5 machines, makespan minimization)
-mvn exec:java -Dexec.mainClass=opt.examples.PcbManufacturingJobShop
-
-# Hospital weekly nurse roster (12 nurses, 21 shifts, labor cost + preferences)
-mvn exec:java -Dexec.mainClass=opt.examples.HospitalNurseScheduling
-
-# Barcelona parcel delivery VRP (4 vehicles, 18 stops, time windows, SAVINGS + GLS)
-mvn exec:java -Dexec.mainClass=opt.examples.BarcelonaDeliveryVrp
-
-# Cargo loading — multiple knapsack (3 containers, 9 cargo lots, value maximization)
-mvn exec:java -Dexec.mainClass=opt.examples.CargoLoadingMultipleKnapsack
-
-# Warehouse container loading — 3D bin packing (2 containers, 8 boxes, minimize containers)
-mvn exec:java -Dexec.mainClass=opt.examples.WarehouseContainerPacking
-
-# Clinic appointment booking (3 doctors, 8 appointments, minimize unscheduled penalty)
-mvn exec:java -Dexec.mainClass=opt.examples.ClinicAppointmentBooking
-
-# Steel roll cutting stock (3 stock types, 5 piece types, minimize waste)
-mvn exec:java -Dexec.mainClass=opt.examples.SteelRollCuttingStock
-```
 
 ## Quick start
 
@@ -450,7 +425,32 @@ for (StockAssignment a : sol.assignments()) {
     }
 }
 ```
+## Run examples
 
+Seven runnable mains illustrate each domain. The `exec-maven-plugin` is already wired into the build; pass the main class explicitly:
+
+```bash
+# PCB flexible job shop (8 board types, 5 machines, makespan minimization)
+mvn exec:java -Dexec.mainClass=opt.examples.PcbManufacturingJobShop
+
+# Hospital weekly nurse roster (12 nurses, 21 shifts, labor cost + preferences)
+mvn exec:java -Dexec.mainClass=opt.examples.HospitalNurseScheduling
+
+# Barcelona parcel delivery VRP (4 vehicles, 18 stops, time windows, SAVINGS + GLS)
+mvn exec:java -Dexec.mainClass=opt.examples.BarcelonaDeliveryVrp
+
+# Cargo loading — multiple knapsack (3 containers, 9 cargo lots, value maximization)
+mvn exec:java -Dexec.mainClass=opt.examples.CargoLoadingMultipleKnapsack
+
+# Warehouse container loading — 3D bin packing (2 containers, 8 boxes, minimize containers)
+mvn exec:java -Dexec.mainClass=opt.examples.WarehouseContainerPacking
+
+# Clinic appointment booking (3 doctors, 8 appointments, minimize unscheduled penalty)
+mvn exec:java -Dexec.mainClass=opt.examples.ClinicAppointmentBooking
+
+# Steel roll cutting stock (3 stock types, 5 piece types, minimize waste)
+mvn exec:java -Dexec.mainClass=opt.examples.SteelRollCuttingStock
+```
 ## Result API
 
 Every `solve()` returns a `Solution` subtype exposing:
