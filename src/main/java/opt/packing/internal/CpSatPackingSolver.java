@@ -4,6 +4,7 @@ import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
 import opt.internal.CpSatParams;
+import opt.internal.Validate;
 import java.util.function.Consumer;
 import opt.packing.ContainerAssignment;
 import opt.packing.Orientation;
@@ -571,6 +572,18 @@ public final class CpSatPackingSolver {
     private void validate() {
         if (containers.isEmpty()) throw new ModelException("At least one container is required.");
         if (boxes.isEmpty()) throw new ModelException("At least one box is required.");
+
+        // Volumes feed objective coefficients and reported totals; reject inputs whose
+        // products or sums would silently wrap around.
+        long totalBoxVolume = 0;
+        for (BoxDef box : boxes) totalBoxVolume = Validate.add(totalBoxVolume, box.volume(), "Total box volume");
+        long totalContainerVolume = 0;
+        for (ContainerDef c : containers) {
+            String what = "Container '" + c.id() + "' volume";
+            totalContainerVolume = Validate.add(totalContainerVolume,
+                    Validate.multiply(Validate.multiply(c.length(), c.width(), what), c.height(), what),
+                    "Total container volume");
+        }
 
         // Resolve above()/below() ids and detect contradictory pairs.
         Set<String> ids = new HashSet<>();

@@ -20,11 +20,11 @@ class SolveStatusTest {
 
     @Test
     void mapStatusCoversAllCpSolverStatusValues() {
-        assertThat(SolveStatus.mapStatus(CpSolverStatus.OPTIMAL)).isEqualTo(SolveStatus.OPTIMAL);
-        assertThat(SolveStatus.mapStatus(CpSolverStatus.FEASIBLE)).isEqualTo(SolveStatus.FEASIBLE);
-        assertThat(SolveStatus.mapStatus(CpSolverStatus.INFEASIBLE)).isEqualTo(SolveStatus.INFEASIBLE);
-        assertThat(SolveStatus.mapStatus(CpSolverStatus.MODEL_INVALID)).isEqualTo(SolveStatus.MODEL_INVALID);
-        assertThat(SolveStatus.mapStatus(CpSolverStatus.UNKNOWN)).isEqualTo(SolveStatus.UNKNOWN);
+        assertThat(opt.internal.CpSatParams.mapStatus(CpSolverStatus.OPTIMAL)).isEqualTo(SolveStatus.OPTIMAL);
+        assertThat(opt.internal.CpSatParams.mapStatus(CpSolverStatus.FEASIBLE)).isEqualTo(SolveStatus.FEASIBLE);
+        assertThat(opt.internal.CpSatParams.mapStatus(CpSolverStatus.INFEASIBLE)).isEqualTo(SolveStatus.INFEASIBLE);
+        assertThat(opt.internal.CpSatParams.mapStatus(CpSolverStatus.MODEL_INVALID)).isEqualTo(SolveStatus.MODEL_INVALID);
+        assertThat(opt.internal.CpSatParams.mapStatus(CpSolverStatus.UNKNOWN)).isEqualTo(SolveStatus.UNKNOWN);
     }
 
     // ── isFeasible / isOptimal truth table across all six SolveStatus values ──

@@ -12,6 +12,7 @@ import java.util.function.Consumer;
  */
 public interface CpSatSolver<S extends Solution> extends Solver<S> {
 
+    /** {@inheritDoc} Must be positive. */
     @Override
     CpSatSolver<S> timeLimit(Duration limit);
 
@@ -19,8 +20,9 @@ public interface CpSatSolver<S extends Solution> extends Solver<S> {
     CpSatSolver<S> verbose(boolean logToStdout);
 
     /**
-     * Sets the number of parallel search workers. Default 8, which is the
-     * portfolio size CP-SAT is tuned for; must be at least 1.
+     * Sets the number of parallel search workers; must be at least 1. Default:
+     * 8 (the portfolio size CP-SAT is tuned for), capped at the number of
+     * processors available to the JVM.
      */
     CpSatSolver<S> workers(int threads);
 
@@ -37,7 +39,7 @@ public interface CpSatSolver<S extends Solution> extends Solver<S> {
      * status is {@link SolveStatus#FEASIBLE}; it runs on the solver thread and
      * should return quickly. An exception thrown by the listener stops the
      * search and is rethrown from {@link #solve()} wrapped in a
-     * {@link ModelException}.
+     * {@link ModelException}; an {@link Error} is rethrown as is.
      */
     CpSatSolver<S> onSolution(Consumer<S> listener);
 
@@ -52,8 +54,10 @@ public interface CpSatSolver<S extends Solution> extends Solver<S> {
 
     /**
      * Asks a running solve to stop as soon as possible; {@link #solve()} then
-     * returns the best solution found so far. Safe to call from another thread
-     * or from an {@link #onSolution} listener. A no-op when no solve is running.
+     * returns the best solution found so far. A solve is running from the moment
+     * {@link #solve()} is entered, so a cancel issued while the model is still
+     * being built is honored too. Safe to call from another thread or from an
+     * {@link #onSolution} listener. A no-op when no solve is running.
      */
     void cancel();
 }

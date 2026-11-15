@@ -1,7 +1,5 @@
 package opt;
 
-import com.google.ortools.sat.CpSolverStatus;
-
 /**
  * Outcome of a solve attempt, mapped from the underlying OR-Tools solver status.
  * <p>
@@ -20,17 +18,5 @@ public enum SolveStatus {
     /** The solver stopped before reaching any conclusion (for example, a time limit was hit). */
     UNKNOWN,
     /** The model is malformed and could not be solved. */
-    MODEL_INVALID;
-
-
-
-    public static SolveStatus mapStatus(CpSolverStatus cpSolverStatus) {
-        return switch (cpSolverStatus) {
-            case OPTIMAL       -> SolveStatus.OPTIMAL;
-            case FEASIBLE      -> SolveStatus.FEASIBLE;
-            case INFEASIBLE    -> SolveStatus.INFEASIBLE;
-            case MODEL_INVALID -> SolveStatus.MODEL_INVALID;
-            default            -> SolveStatus.UNKNOWN;
-        };
-    }
+    MODEL_INVALID
 }

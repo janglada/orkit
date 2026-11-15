@@ -4,6 +4,7 @@ import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
 import opt.internal.CpSatParams;
+import opt.internal.Validate;
 import java.util.function.Consumer;
 import opt.cutting.CuttingGoal;
 import opt.cutting.CuttingSolution;
@@ -459,6 +460,12 @@ public final class CpSatCuttingSolver {
         if (stocks.isEmpty()) throw new ModelException("At least one stock roll is required.");
         if (pieces.isEmpty()) throw new ModelException("At least one piece is required.");
         if (goal == null) throw new ModelException("Cutting goal must be set.");
+        // Sheet areas are objective coefficients in 2D; reject inputs that would wrap around.
+        long totalArea = 0;
+        for (StockDef s : stocks) {
+            totalArea = Validate.add(totalArea,
+                    Validate.multiply(s.length(), s.width(), "Stock '" + s.id() + "' area"), "Total stock area");
+        }
     }
 
     private static long[] ones(int n) {

@@ -311,7 +311,7 @@ public final class SchedulingBuilder implements CpSatProblem<EmployeeRoster> {
 
         /** Runs the configured CP-SAT solver and returns the resulting {@link EmployeeRoster}. */
         @Override
-        public EmployeeRoster solve() {
+        protected EmployeeRoster doSolve() {
             return new CpSatSchedulingSolver(
                     snap.employees(), snap.shifts(),
                     snap.horizonStart(), snap.horizonDays(),

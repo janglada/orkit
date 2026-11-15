@@ -108,7 +108,7 @@ public final class MultipleKnapsackBuilder implements CpSatProblem<MultipleKnaps
         }
 
         @Override
-        public MultipleKnapsackSolution solve() {
+        protected MultipleKnapsackSolution doSolve() {
             return new CpSatMultipleKnapsackSolver(items, bins, goal, params, listener, warmStart).solve();
         }
     }

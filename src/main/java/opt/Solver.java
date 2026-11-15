@@ -18,14 +18,19 @@ import java.time.Duration;
  */
 public interface Solver<S extends Solution> {
 
-    /** Sets the maximum wall-clock time the solver may run before giving up. */
+    /**
+     * Sets the maximum wall-clock time the solver may run before giving up.
+     *
+     * @throws ModelException if {@code limit} is null, zero, or negative
+     */
     Solver<S> timeLimit(Duration limit);
 
     /** Enables or disables logging to standard output during the solve. */
     Solver<S> verbose(boolean logToStdout);
 
     /**
-     * Runs the solver and returns the resulting {@link Solution}.
+     * Runs the solver and returns the resulting {@link Solution}. A solver runs one
+     * solve at a time; obtain a separate solver for each concurrent solve.
      *
      * @return the solution produced by the solve
      */

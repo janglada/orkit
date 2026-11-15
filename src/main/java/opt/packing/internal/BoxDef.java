@@ -1,5 +1,7 @@
 package opt.packing.internal;
 
+import opt.internal.Validate;
+
 import opt.packing.Orientation;
 
 import java.util.List;
@@ -29,7 +31,8 @@ public record BoxDef(
 
     /** The volume occupied by this box (length * width * height). */
     public long volume() {
-        return length * width * height;
+        return Validate.multiply(Validate.multiply(length, width, "Box '" + id + "' volume"),
+                height, "Box '" + id + "' volume");
     }
 
     /**

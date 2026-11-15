@@ -10,6 +10,7 @@ import opt.Solution;
 import opt.SolveStatus;
 
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -20,8 +21,11 @@ import java.util.function.Consumer;
  */
 public final class CpSatParams {
 
-    /** Default number of parallel workers; CP-SAT's subsolver portfolio is tuned for 8. */
-    public static final int DEFAULT_WORKERS = 8;
+    /**
+     * Default number of parallel workers: CP-SAT's subsolver portfolio is tuned for 8, but
+     * never more than the processors available to the JVM (which honors container CPU limits).
+     */
+    public static final int DEFAULT_WORKERS = Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors()));
     /** Default wall-clock time limit. */
     public static final Duration DEFAULT_TIME_LIMIT = Duration.ofMinutes(1);
 
@@ -30,6 +34,8 @@ public final class CpSatParams {
     private int seed = 0;
     private boolean verbose = false;
     private final AtomicReference<CpSolver> active = new AtomicReference<>();
+    private final AtomicBoolean inSession = new AtomicBoolean();
+    private volatile boolean cancelRequested;
 
     /** Loads the native library eagerly; see {@link AbstractCpSatSolver}. */
     public CpSatParams() {
@@ -47,10 +53,10 @@ public final class CpSatParams {
         S extract(CpValues values, SolveStatus status, Duration runtime);
     }
 
-    /** Sets the time limit; rejects null. */
+    /** Sets the time limit; rejects null, zero, and negative durations. */
     public CpSatParams timeLimit(Duration limit) {
-        if (limit == null) throw new ModelException("timeLimit must not be null.");
-        this.timeLimitSeconds = limit.toMillis() / 1000.0;
+        Validate.positive(limit, "timeLimit");
+        this.timeLimitSeconds = limit.toNanos() / 1e9;
         return this;
     }
 
@@ -73,8 +79,32 @@ public final class CpSatParams {
         return this;
     }
 
-    /** Stops the running solve, if any. */
+    /**
+     * Marks the start of a solve session, which spans model building and the search.
+     * A {@link #cancel()} during the session stops the search, even if it arrives before
+     * the search has started.
+     *
+     * @throws ModelException if a session is already running (concurrent solve on one solver)
+     */
+    public void beginSession() {
+        if (!inSession.compareAndSet(false, true)) {
+            throw new ModelException("solve() is already running on this solver; create a new solver per concurrent solve.");
+        }
+        cancelRequested = false;
+    }
+
+    /** Ends the current solve session; a later {@link #cancel()} is a no-op until the next one. */
+    public void endSession() {
+        cancelRequested = false;
+        inSession.set(false);
+    }
+
+    /** Stops the current solve session, if any; a no-op when nothing is solving. */
     public void cancel() {
+        if (!inSession.get()) return;
+        // Publish the request before reading the active solver: the solve thread publishes the
+        // solver before reading the request, so at least one side always sees the other.
+        cancelRequested = true;
         CpSolver solver = active.get();
         if (solver != null) solver.stopSearch();
     }
@@ -100,16 +130,32 @@ public final class CpSatParams {
 
         CpSolverStatus cpStatus;
         active.set(solver);
+        // A cancel that arrived while the model was being built: return at once with whatever
+        // the zero-budget search yields (normally UNKNOWN).
+        if (cancelRequested) p.setMaxTimeInSeconds(0.0);
         try {
             cpStatus = (callback == null) ? solver.solve(model) : solver.solve(model, callback);
         } finally {
             active.set(null);
         }
         if (callback != null && callback.failure != null) {
+            // Errors (OutOfMemoryError, AssertionError, ...) are not model problems; let them through.
+            if (callback.failure instanceof Error e) throw e;
             throw new ModelException("onSolution listener threw an exception; search was stopped.", callback.failure);
         }
         Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
-        return extractor.extract(CpValues.of(solver), SolveStatus.mapStatus(cpStatus), runtime);
+        return extractor.extract(CpValues.of(solver), mapStatus(cpStatus), runtime);
+    }
+
+    /** Maps a CP-SAT status to the public {@link SolveStatus}. */
+    public static SolveStatus mapStatus(CpSolverStatus cpSolverStatus) {
+        return switch (cpSolverStatus) {
+            case OPTIMAL       -> SolveStatus.OPTIMAL;
+            case FEASIBLE      -> SolveStatus.FEASIBLE;
+            case INFEASIBLE    -> SolveStatus.INFEASIBLE;
+            case MODEL_INVALID -> SolveStatus.MODEL_INVALID;
+            default            -> SolveStatus.UNKNOWN;
+        };
     }
 
     /** Bridges CP-SAT's solution callback to the domain extractor and the user listener. */

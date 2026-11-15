@@ -5,10 +5,12 @@ import com.google.protobuf.Duration;
 import opt.ModelException;
 import opt.SolveStatus;
 import opt.internal.NativeLoader;
+import opt.internal.Validate;
 import opt.routing.*;
 
 import java.time.LocalTime;
 import java.util.*;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 
 /** Compiles a routing model description into the OR-Tools Routing library and solves it. */
@@ -29,6 +31,7 @@ public final class RoutingCompiler {
 
     private long timeLimitMillis = 30_000;
     private boolean verbose = false;
+    private BooleanSupplier stopRequested = () -> false;
 
     /**
      * Creates a compiler for the given routing model description.
@@ -48,8 +51,14 @@ public final class RoutingCompiler {
 
     /** Sets the wall-clock time budget for the search; default 30 seconds. */
     public RoutingCompiler timeLimit(java.time.Duration limit) {
-        if (limit == null) throw new ModelException("timeLimit must not be null.");
-        this.timeLimitMillis = limit.toMillis();
+        Validate.positive(limit, "timeLimit");
+        this.timeLimitMillis = Math.max(1, limit.toMillis());
+        return this;
+    }
+
+    /** Polled during the search; returning {@code true} stops it and keeps the best routes so far. */
+    public RoutingCompiler stopWhen(BooleanSupplier stop) {
+        this.stopRequested = Objects.requireNonNull(stop);
         return this;
     }
     /** Enables OR-Tools search log output. */
@@ -144,10 +153,12 @@ public final class RoutingCompiler {
         if (spec.goal() instanceof RoutingGoal.MinimizeVehiclesUsed) {
             long maxArc = 0;
             for (long[] row : distMatrix) for (long a : row) maxArc = Math.max(maxArc, a);
-            fixedCostBoost = (long) numNodes * maxArc + 1;  // dominates any single tour's distance
+            // Dominates any single tour's distance.
+            fixedCostBoost = Validate.add(Validate.multiply(numNodes, maxArc, "Vehicle-count cost"), 1,
+                    "Vehicle-count cost");
         }
         for (int v = 0; v < numVehicles; v++) {
-            long fixed = vehicles.get(v).fixedCost() + fixedCostBoost;
+            long fixed = Validate.add(vehicles.get(v).fixedCost(), fixedCostBoost, "Vehicle fixed cost");
             if (fixed > 0) routing.setFixedCostOfVehicle(fixed, v);
         }
 
@@ -210,11 +221,10 @@ public final class RoutingCompiler {
             pairedStopIds.add(pair.pickupId());
             pairedStopIds.add(pair.deliveryId());
         }
-        if (spec.droppingPenalty() > 0) {
-            for (int i = 0; i < stops.size(); i++) {
-                if (pairedStopIds.contains(stops.get(i).id())) continue;
-                routing.addDisjunction(new long[]{manager.nodeToIndex(numDepots + i)}, spec.droppingPenalty());
-            }
+        for (int i = 0; i < stops.size(); i++) {
+            if (pairedStopIds.contains(stops.get(i).id())) continue;
+            long penalty = dropPenaltyOf(stops.get(i));
+            if (penalty > 0) routing.addDisjunction(new long[]{manager.nodeToIndex(numDepots + i)}, penalty);
         }
 
         // ── Pickup and delivery ─────────────────────────────────────────────────
@@ -227,9 +237,11 @@ public final class RoutingCompiler {
                 routing.addPickupAndDelivery(p, d);
                 cp.addConstraint(cp.makeEquality(routing.vehicleVar(p), routing.vehicleVar(d)));
                 cp.addConstraint(cp.makeLessOrEqual(distDim.cumulVar(p), distDim.cumulVar(d)));
-                if (spec.droppingPenalty() > 0) {
+                long pairPenalty = Math.max(dropPenaltyOf(stops.get(stopIndexOf.get(pair.pickupId()))),
+                        dropPenaltyOf(stops.get(stopIndexOf.get(pair.deliveryId()))));
+                if (pairPenalty > 0) {
                     // Penalty is paid per inactive index; both must be active or both inactive.
-                    routing.addDisjunction(new long[]{p, d}, spec.droppingPenalty(), 2);
+                    routing.addDisjunction(new long[]{p, d}, pairPenalty, 2);
                     cp.addConstraint(cp.makeEquality(routing.activeVar(p), routing.activeVar(d)));
                 }
             }
@@ -262,6 +274,9 @@ public final class RoutingCompiler {
             }
         }
 
+        // Cooperative cancellation, polled by the search alongside the time limit.
+        routing.addSearchMonitor(routing.solver().makeCustomLimit(stopRequested));
+
         // Search parameters
         RoutingSearchParameters params = buildSearchParameters();
 
@@ -276,6 +291,11 @@ public final class RoutingCompiler {
         } finally {
             if (solution != null) solution.delete();  // native SWIG object
         }
+    }
+
+    /** The stop's own drop penalty when set, else the model-wide one; {@code 0} means mandatory. */
+    private long dropPenaltyOf(StopDef stop) {
+        return stop.dropPenalty() > 0 ? stop.dropPenalty() : Math.max(0, spec.droppingPenalty());
     }
 
     /** Whether any declared feature needs the time dimension. */
@@ -294,7 +314,8 @@ public final class RoutingCompiler {
         RoutingIndexManager manager = m.manager();
 
         if (solution == null) {
-            SolveStatus status = mapStatus(routingStatus, false);
+            // A cancelled search proves nothing about feasibility.
+            SolveStatus status = stopRequested.getAsBoolean() ? SolveStatus.UNKNOWN : mapStatus(routingStatus, false);
             return new RoutingPlan(status, OptionalDouble.empty(), runtime, List.of(), List.of());
         }
 
@@ -509,13 +530,6 @@ public final class RoutingCompiler {
     private void validate() {
         if (vehicles.isEmpty()) throw new ModelException("At least one vehicle is required.");
         if (stops.isEmpty())    throw new ModelException("At least one stop is required.");
-        if (spec.distanceSource() instanceof DistanceSource.Haversine) {
-            for (DepotDef d : depots) {
-                if (d.lat() == 0 && d.lon() == 0) {
-                    throw new ModelException("Depot coordinates must be set when using haversine distances.");
-                }
-            }
-        }
     }
 
     private int resolveDepotIndex(String depotId, Map<String, Integer> depotIndexOf, String vehicleId) {

@@ -268,6 +268,7 @@ plan.routeOf("Reefer").ifPresent(r -> System.out.println("Reefer: " + r.stops())
 - **Times** are reported (`Route.startTime/endTime`, `Visit.arrival/departure`) whenever any time feature is present: a stop window or service time, a vehicle window or `maxRouteDuration`, or a travel-time matrix. A pure CVRP has `hasTimes() == false` and null times.
 - **Goals.** `totalDistance()` (default) reports meters; `totalCost()` adds each used vehicle's `fixedCost` (same units as meters); `vehiclesUsed()` minimizes the vehicle count and reports it. `plan.vehiclesUsed()` and `totalFixedCost()` are always available.
 - **Pickup and delivery.** The pickup stop's `demand` is the carried load; the delivery stop's demand is omitted or equal. Pairs stay on one vehicle in order and are dropped together (penalty per stop) when `allowDroppingStops` is on. `FIFO`/`LIFO` constrain how pairs interleave.
+- **Optional stops.** `allowDroppingStops(penalty)` makes every stop droppable at that cost; `StopConfig.penaltyIfDropped(penalty)` makes one stop droppable at its own cost and overrides the model-wide penalty for that stop. A pickup-and-delivery pair whose stops carry different penalties uses the larger one for both.
 - **Skills.** `StopConfig.requires(...)` restricts a stop to vehicles declaring every listed skill via `VehicleConfig.skills(...)`; a stop nobody can serve fails fast.
 - **Travel times.** `DistanceSource.fromMatrices(meters, minutes)` supplies real travel times and makes `travelSpeedKmh` irrelevant.
 
@@ -465,11 +466,11 @@ Lookups such as `MultipleKnapsackSolution.binOf(item)` or `PackingSolution.conta
 
 ## Solver knobs
 
-`build()` returns an immutable problem; `solver()` on it (or directly on the builder) returns a fresh solver each call.
+`build()` returns an immutable problem; `solver()` on it (or directly on the builder) returns a fresh solver each call. A solver runs one solve at a time (a second concurrent `solve()` on the same solver throws `ModelException`), so take one solver per thread. Time limits must be positive.
 
 - **Every solver** (`opt.Solver`): `timeLimit(Duration)`, `verbose(boolean)`, `solve()`.
-- **CP-SAT domains** (`opt.CpSatSolver`, all except routing): `workers(int)` (default **8**, CP-SAT's tuned portfolio size), `seed(int)` (reproducible only with `workers(1)`), `onSolution(Consumer<S>)` to receive each improving intermediate result, `warmStart(S previous)` to hint the search from an earlier feasible result (ids that no longer exist are ignored), and `cancel()` to stop a running solve and keep the best result so far.
-- **Routing** (`opt.routing.RoutingSolver`): `firstSolution(Strategy)` and `improveWith(Metaheuristic)`. OR-Tools routing search has no worker count or seed, so those knobs are deliberately absent.
+- **CP-SAT domains** (`opt.CpSatSolver`, all except routing): `workers(int)` (default **8**, CP-SAT's tuned portfolio size, capped at the processors available to the JVM), `seed(int)` (reproducible only with `workers(1)`), `onSolution(Consumer<S>)` to receive each improving intermediate result, `warmStart(S previous)` to hint the search from an earlier feasible result (ids that no longer exist are ignored), and `cancel()` to stop a running solve and keep the best result so far (a cancel issued while the model is still being built is honored too). A listener exception stops the search and is rethrown wrapped in `ModelException`; an `Error` is rethrown as is.
+- **Routing** (`opt.routing.RoutingSolver`): `firstSolution(Strategy)`, `improveWith(Metaheuristic)`, and `cancel()` (best routes so far, or `UNKNOWN` if none was found yet). OR-Tools routing search has no worker count or seed, so those knobs are deliberately absent.
 
 ```java
 var problem = Optimize.jobShop()....build();
@@ -481,7 +482,9 @@ var better = solver.onSolution(s -> { if (s.makespan() < 100) solver.cancel(); }
 ## Modeling notes
 
 - **Routing optimality.** Routing uses first-solution strategies plus local-search metaheuristics (e.g. SAVINGS + Guided Local Search) and does **not** prove global optimality the way CP-SAT does. `FEASIBLE` is the normal status for routing; `OPTIMAL` is reported only on the rare occasion OR-Tools proves it. Treat routing results as high-quality heuristics, not certifiably optimal solutions.
-- **Routing status.** A routing search that exhausts its time limit without any solution reports `UNKNOWN` (raise the limit); `INFEASIBLE` means the search space was exhausted.
+- **Routing status.** A routing search that exhausts its time limit, or is cancelled, without any solution reports `UNKNOWN` (raise the limit). `INFEASIBLE` means OR-Tools either proved infeasibility or exhausted its search without a solution; because routing search is heuristic, the latter is strong evidence but not a proof.
+- **Routing day.** Routing times are minutes within one day (00:00–24:00): time windows and vehicle availability are `LocalTime`s, and multi-day routes are not supported.
+- **Input validation.** Coordinates must be valid WGS84 (latitude in [-90, 90], longitude in [-180, 180]); distance and time matrices must be square and non-negative and are copied when supplied. Inputs whose derived totals (horizons, volumes, areas, weighted costs) would overflow a 64-bit integer are rejected with `ModelException` instead of wrapping around.
 - **No time-dependent travel.** Routing's travel time is a pure function of `(from, to)` — OR-Tools' native `RoutingModel` transit callback cannot read the arrival-time variable, so travel time cannot vary by time of day. Travel times come from `DistanceSource.fromMatrices` or from the single global `travelSpeedKmh` scalar, never from a time-banded profile. Static time windows, vehicle windows, and multiple depots are fully supported; true time-dependent travel would require a CP-SAT routing solver and is not yet implemented.
 - **Soft-goal weights.** Scheduling soft goals accept an optional weight folded into the same objective as labor cost. `Goals.balanceWorkloadAcrossEmployees(weight)` defaults to **10** per minute of imbalance; `Goals.honorEmployeePreferences(weight)` defaults to **5** per satisfied preference (reward); `Goals.penalizeUnderstaffing(weight)` defaults to **100** per missing employee. All are in the same units as the `totalLaborCost()` objective (cost per hour times minutes). Pass a larger weight (e.g. `honorEmployeePreferences(100)`) to make preferences outweigh cost savings, or a smaller one to prioritize cost.
 - **Shift placement.** `.on(DayOfWeek)` and `.every(...)` place a shift on **every** matching date in the horizon; `.on(LocalDate)` targets one calendar date. Assignments carry the declared shift id plus the concrete `date()`.

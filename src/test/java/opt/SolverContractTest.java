@@ -6,6 +6,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -202,5 +205,84 @@ class SolverContractTest {
         for (var m : opt.routing.RoutingSolver.class.getMethods()) {
             assertThat(m.getName()).as("routing must not accept a knob OR-Tools ignores").isNotIn("workers", "seed");
         }
+    }
+
+    // ── Hardening: cancel sessions, concurrent solves, listener errors, limits, overflow ──
+
+    @Test
+    void cancelFromAnotherThreadStopsRunningSolve() throws Exception {
+        CpSatSolver<opt.jobshop.JobShopSchedule> solver = hardJobShop(15, 10, 7).solver()
+                .timeLimit(Duration.ofSeconds(60)).workers(2);
+        CountDownLatch firstSolution = new CountDownLatch(1);
+        solver.onSolution(s -> firstSolution.countDown());
+        var future = CompletableFuture.supplyAsync(solver::solve);
+        assertThat(firstSolution.await(30, TimeUnit.SECONDS)).isTrue();
+        solver.cancel();
+        var result = future.get(20, TimeUnit.SECONDS);
+        assertThat(result.isFeasible()).isTrue();
+        assertThat(result.runtime().toSeconds()).isLessThan(30);
+    }
+
+    @Test
+    void concurrentSolveOnOneSolverIsRejected() throws Exception {
+        CpSatSolver<opt.jobshop.JobShopSchedule> solver = hardJobShop(15, 10, 8).solver()
+                .timeLimit(Duration.ofSeconds(60)).workers(2);
+        CountDownLatch running = new CountDownLatch(1);
+        solver.onSolution(s -> running.countDown());
+        var future = CompletableFuture.supplyAsync(solver::solve);
+        assertThat(running.await(30, TimeUnit.SECONDS)).isTrue();
+        assertThatThrownBy(solver::solve).isInstanceOf(ModelException.class).hasMessageContaining("already running");
+        solver.cancel();
+        assertThat(future.get(20, TimeUnit.SECONDS).isFeasible()).isTrue();
+        // The session ended, so the same solver can solve again.
+        assertThat(solver.timeLimit(Duration.ofSeconds(1)).solve().status()).isNotNull();
+    }
+
+    @Test
+    void cancelOnIdleSolverDoesNotAffectNextSolve() {
+        var solver = hardJobShop(3, 3, 9).solver().timeLimit(Duration.ofSeconds(10));
+        solver.cancel();
+        assertThat(solver.solve().isOptimal()).isTrue();
+    }
+
+    @Test
+    void listenerErrorPropagatesUnwrapped() {
+        var solver = hardJobShop(6, 4, 5).solver().timeLimit(Duration.ofSeconds(60));
+        assertThatThrownBy(() -> solver.onSolution(s -> { throw new AssertionError("listener bug"); }).solve())
+                .isInstanceOf(AssertionError.class)
+                .hasMessage("listener bug");
+    }
+
+    @Test
+    void nonPositiveTimeLimitIsRejected() {
+        var problem = hardJobShop(2, 2, 3);
+        assertThatThrownBy(() -> problem.solver().timeLimit(Duration.ZERO))
+                .isInstanceOf(ModelException.class).hasMessageContaining("timeLimit");
+        assertThatThrownBy(() -> problem.solver().timeLimit(Duration.ofSeconds(-1)))
+                .isInstanceOf(ModelException.class).hasMessageContaining("timeLimit");
+    }
+
+    @Test
+    void defaultWorkersNeverExceedAvailableProcessors() {
+        assertThat(opt.internal.CpSatParams.DEFAULT_WORKERS)
+                .isBetween(1, Math.min(8, Runtime.getRuntime().availableProcessors()));
+    }
+
+    @Test
+    void jobShopHorizonOverflowIsReported() {
+        assertThatThrownBy(() -> Optimize.jobShop().machines("M1")
+                .job("J1", j -> j.operation().on("M1").takes(5).releaseAt(Long.MAX_VALUE - 1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve())
+                .isInstanceOf(ModelException.class).hasMessageContaining("overflows");
+    }
+
+    @Test
+    void packingVolumeOverflowIsReported() {
+        long huge = 3_000_000_000L;
+        assertThatThrownBy(() -> Optimize.packing()
+                .container("C", c -> c.length(huge).width(huge).height(huge).maxWeight(10))
+                .box("B", b -> b.length(huge).width(huge).height(huge).weight(1))
+                .solver().timeLimit(Duration.ofSeconds(5)).solve())
+                .isInstanceOf(ModelException.class).hasMessageContaining("overflows");
     }
 }

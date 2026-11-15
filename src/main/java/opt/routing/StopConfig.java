@@ -23,12 +23,14 @@ public final class StopConfig {
     boolean atSet = false;
     boolean openSet = false;
     boolean closeSet = false;
+    long dropPenalty = 0;
     final Set<String> requiredSkills = new LinkedHashSet<>();
 
     StopConfig() {}
 
     /** Sets the geographic location of this stop (required when using haversine distances). */
     public StopConfig at(double lat, double lon) {
+        validateCoordinates(lat, lon, "Stop '" + id + "'");
         this.lat = lat;
         this.lon = lon;
         this.atSet = true;
@@ -56,6 +58,7 @@ public final class StopConfig {
 
     /** Sets the earliest time-of-day the stop may be served; defaults to 00:00. */
     public StopConfig openFrom(LocalTime time) {
+        if (time == null) throw new ModelException("openFrom must not be null.");
         this.openMin = time.toSecondOfDay() / 60;
         this.openSet = true;
         validateWindow();
@@ -64,6 +67,7 @@ public final class StopConfig {
 
     /** Sets the latest time-of-day the stop may be served; defaults to 23:59 (end of day). */
     public StopConfig closeAt(LocalTime time) {
+        if (time == null) throw new ModelException("closeAt must not be null.");
         this.closeMin = time.toSecondOfDay() / 60;
         this.closeSet = true;
         validateWindow();
@@ -75,6 +79,28 @@ public final class StopConfig {
         for (String s : skills) Validate.nonBlank(s, "required skill");
         this.requiredSkills.addAll(Arrays.asList(skills));
         return this;
+    }
+
+    /**
+     * Makes this stop optional: the solver may leave it unserved at this cost, which overrides
+     * the model-wide {@link RoutingBuilder#allowDroppingStops(long)} penalty for this stop only.
+     *
+     * @throws ModelException if {@code penalty} is not positive
+     */
+    public StopConfig penaltyIfDropped(long penalty) {
+        Validate.positive(penalty, "penaltyIfDropped");
+        this.dropPenalty = penalty;
+        return this;
+    }
+
+    /** Rejects non-finite or out-of-range WGS84 coordinates. */
+    static void validateCoordinates(double lat, double lon, String owner) {
+        if (!Double.isFinite(lat) || lat < -90 || lat > 90) {
+            throw new ModelException(owner + ": latitude must be within [-90, 90], got: " + lat);
+        }
+        if (!Double.isFinite(lon) || lon < -180 || lon > 180) {
+            throw new ModelException(owner + ": longitude must be within [-180, 180], got: " + lon);
+        }
     }
 
     private void validateWindow() {

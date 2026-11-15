@@ -2,10 +2,12 @@ package opt.routing;
 
 import opt.ModelException;
 import opt.Solver;
+import opt.internal.Validate;
 import opt.routing.internal.RoutingCompiler;
 import opt.routing.internal.RoutingSpec;
 
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Routing-specific solver that adds {@link #firstSolution} and {@link #improveWith}
@@ -13,7 +15,8 @@ import java.time.Duration;
  * <p>
  * Unlike the CP-SAT domains, routing exposes no worker count or random seed: the
  * OR-Tools routing search parameters have no such settings, so accepting them here
- * would silently do nothing.
+ * would silently do nothing. {@link #cancel()} stops a running search and keeps the best
+ * routes found so far.
  */
 public final class RoutingSolver implements Solver<RoutingPlan> {
 
@@ -23,15 +26,17 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
     private boolean verbose = false;
     private Strategy firstSolutionStrategy = Strategy.AUTOMATIC;
     private Metaheuristic metaheuristic = Metaheuristic.AUTOMATIC;
+    private final AtomicBoolean solving = new AtomicBoolean();
+    private volatile boolean cancelRequested;
 
     RoutingSolver(RoutingSpec spec) {
         this.spec = spec;
     }
 
-    /** Sets the wall-clock time budget for the search; default 30 seconds. */
+    /** Sets the wall-clock time budget for the search; default 30 seconds. Must be positive. */
     @Override
     public RoutingSolver timeLimit(Duration limit) {
-        if (limit == null) throw new ModelException("timeLimit must not be null.");
+        Validate.positive(limit, "timeLimit");
         this.timeLimit = limit;
         return this;
     }
@@ -56,12 +61,35 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
         return this;
     }
 
-    /** Solves the configured routing problem and returns the resulting {@link RoutingPlan}. */
+    /**
+     * Solves the configured routing problem and returns the resulting {@link RoutingPlan}.
+     *
+     * @throws ModelException if this solver is already solving on another thread
+     */
     @Override
     public RoutingPlan solve() {
-        return new RoutingCompiler(spec, firstSolutionStrategy, metaheuristic)
-                .timeLimit(timeLimit)
-                .verbose(verbose)
-                .solve();
+        if (!solving.compareAndSet(false, true)) {
+            throw new ModelException("solve() is already running on this solver; create a new solver per concurrent solve.");
+        }
+        cancelRequested = false;
+        try {
+            return new RoutingCompiler(spec, firstSolutionStrategy, metaheuristic)
+                    .timeLimit(timeLimit)
+                    .verbose(verbose)
+                    .stopWhen(() -> cancelRequested)
+                    .solve();
+        } finally {
+            cancelRequested = false;
+            solving.set(false);
+        }
+    }
+
+    /**
+     * Asks a running solve to stop as soon as possible; {@link #solve()} then returns the best
+     * routes found so far, or status {@code UNKNOWN} if none was found yet. Safe to call from
+     * another thread. A no-op when no solve is running.
+     */
+    public void cancel() {
+        if (solving.get()) cancelRequested = true;
     }
 }

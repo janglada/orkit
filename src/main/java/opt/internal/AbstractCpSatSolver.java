@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 /**
  * Base class for the per-domain {@link CpSatSolver} implementations: holds the
  * shared {@link CpSatParams}, the optional solution listener, and the optional
- * warm-start solution. Subclasses implement only {@link #solve()}.
+ * warm-start solution. Subclasses implement only {@link #doSolve()}.
  */
 public abstract class AbstractCpSatSolver<S extends Solution> implements CpSatSolver<S> {
 
@@ -51,6 +51,25 @@ public abstract class AbstractCpSatSolver<S extends Solution> implements CpSatSo
         this.warmStart = previous;
         return this;
     }
+
+    /**
+     * Runs {@link #doSolve()} inside a solve session, so a {@link #cancel()} issued while the
+     * model is still being built is honored as soon as the search starts.
+     *
+     * @throws ModelException if this solver is already solving on another thread
+     */
+    @Override
+    public final S solve() {
+        params.beginSession();
+        try {
+            return doSolve();
+        } finally {
+            params.endSession();
+        }
+    }
+
+    /** Builds the domain model and solves it through {@link #params}. */
+    protected abstract S doSolve();
 
     @Override
     public void cancel() {

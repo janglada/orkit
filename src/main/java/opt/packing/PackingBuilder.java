@@ -143,7 +143,7 @@ public final class PackingBuilder implements CpSatProblem<PackingSolution> {
         }
 
         @Override
-        public PackingSolution solve() {
+        protected PackingSolution doSolve() {
             return new CpSatPackingSolver(containers, boxes, goal, requireSupport, params, listener, warmStart).solve();
         }
     }

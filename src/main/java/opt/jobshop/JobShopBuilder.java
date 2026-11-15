@@ -307,7 +307,7 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
         }
 
         @Override
-        public JobShopSchedule solve() {
+        protected JobShopSchedule doSolve() {
             return new CpSatJobShopSolver(machines, jobs, setupMatrix, goal, downtimes, params, listener, warmStart).solve();
         }
     }

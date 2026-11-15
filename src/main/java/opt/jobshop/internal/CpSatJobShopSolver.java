@@ -4,6 +4,7 @@ import com.google.ortools.sat.*;
 import opt.ModelException;
 import opt.SolveStatus;
 import opt.internal.CpSatParams;
+import opt.internal.Validate;
 import java.util.function.Consumer;
 import opt.jobshop.JobShopGoal;
 import opt.jobshop.JobShopSchedule;
@@ -61,14 +62,17 @@ public final class CpSatJobShopSolver {
     public JobShopSchedule solve() {
         validate();
 
-        long totalDuration = jobs.stream()
-                .flatMap(j -> j.operations().stream())
-                .mapToLong(OperationDef::duration)
-                .sum();
+        long totalDuration = 0;
+        for (JobDef j : jobs) {
+            for (OperationDef op : j.operations()) {
+                totalDuration = Validate.add(totalDuration, op.duration(), "Total operation duration");
+            }
+        }
         long numOps = jobs.stream().mapToLong(j -> j.operations().size()).sum();
         // Each operation has at most one predecessor, so total setup slack <= numOps * maxSetup.
         long maxSetup = setupMatrix.isEmpty() ? 0 : setupMatrix.maxSetupValue();
-        long computedHorizon = totalDuration + numOps * maxSetup;
+        long computedHorizon = Validate.add(totalDuration,
+                Validate.multiply(numOps, maxSetup, "Setup-time slack"), "Scheduling horizon");
         // A release date can push a job's completion past the unconstrained horizon
         // (computedHorizon already sums every job's duration, so it dominates any
         // single job's duration + setup slack; adding the largest release upper-bounds
@@ -86,7 +90,8 @@ public final class CpSatJobShopSolver {
         // Downtime: in the worst case all work runs after the last window ends, so widening
         // by the latest downtime end always leaves room for an optimal schedule.
         long maxDowntimeEnd = downtimes.stream().mapToLong(DowntimeDef::to).max().orElse(0);
-        long horizon = Math.max(computedHorizon + maxRelease + maxDowntimeEnd, maxDeadline);
+        long horizon = Math.max(Validate.add(Validate.add(computedHorizon, maxRelease, "Scheduling horizon"),
+                maxDowntimeEnd, "Scheduling horizon"), maxDeadline);
 
         CpModel model = new CpModel();
 
@@ -207,11 +212,11 @@ public final class CpSatJobShopSolver {
             case JobShopGoal.MinimizeMakespan ignored ->
                     obj.addTerm(makespan, 1);
             case JobShopGoal.MinimizeTardiness t -> {
-                for (WeightedTerm term : tardinessTerms) obj.addTerm(term.var(), t.weight() * term.weight());
+                for (WeightedTerm term : tardinessTerms) obj.addTerm(term.var(), Validate.multiply(t.weight(), term.weight(), "Tardiness weight"));
             }
             case JobShopGoal.MinimizeMakespanAndTardiness mt -> {
                 obj.addTerm(makespan, mt.makespanWeight());
-                for (WeightedTerm term : tardinessTerms) obj.addTerm(term.var(), mt.tardinessWeight() * term.weight());
+                for (WeightedTerm term : tardinessTerms) obj.addTerm(term.var(), Validate.multiply(mt.tardinessWeight(), term.weight(), "Tardiness weight"));
             }
             case JobShopGoal.MinimizeWeightedCompletionTime ignored -> {
                 for (int j = 0; j < jobs.size(); j++) {

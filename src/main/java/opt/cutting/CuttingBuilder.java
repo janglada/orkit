@@ -146,7 +146,7 @@ public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
         }
 
         @Override
-        public CuttingSolution solve() {
+        protected CuttingSolution doSolve() {
             return new CpSatCuttingSolver(stocks, pieces, goal, droppingPenalty, params, listener, warmStart).solve();
         }
     }

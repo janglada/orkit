@@ -47,6 +47,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
      */
     public RoutingBuilder depot(String id, double lat, double lon) {
         Validate.nonBlank(id, "depot id");
+        StopConfig.validateCoordinates(lat, lon, "Depot '" + id + "'");
         if (!depotIds.add(id)) {
             throw new ModelException("Duplicate depot id: '" + id + "'.");
         }
@@ -96,7 +97,7 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         config.accept(cfg);
         if (!cfg.atSet) stopsWithoutCoordinates.add(id);
         stops.add(new StopDef(id, cfg.lat, cfg.lon, cfg.demand,
-                cfg.serviceTimeMin, cfg.openMin, cfg.closeMin, Set.copyOf(cfg.requiredSkills)));
+                cfg.serviceTimeMin, cfg.openMin, cfg.closeMin, Set.copyOf(cfg.requiredSkills), cfg.dropPenalty));
         return this;
     }
 
@@ -104,7 +105,8 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
      * Requires {@code pickupStopId} to be visited before {@code deliveryStopId} by the same
      * vehicle. The pickup stop's {@code demand} is the load carried between the two; the
      * delivery stop's demand must be omitted or equal to it. When dropping is allowed, the two
-     * stops are dropped together and the penalty is paid per stop. Ids may be declared later;
+     * stops are dropped together and the penalty is paid per stop; if the two stops have
+     * different {@link StopConfig#penaltyIfDropped(long) penalties}, the larger one applies to both. Ids may be declared later;
      * they are resolved when the problem is built.
      */
     public RoutingBuilder pickupAndDelivery(String pickupStopId, String deliveryStopId) {
@@ -133,8 +135,13 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
     /**
      * Allows stops to be dropped from routes. The penalty is added to the objective
      * for each unserved stop, so the solver only drops a stop when it is cheaper than serving it.
+     * {@code 0} (the default) makes every stop mandatory unless it sets its own
+     * {@link StopConfig#penaltyIfDropped(long) penalty}, which takes precedence over this one.
+     *
+     * @throws ModelException if {@code penalty} is negative
      */
     public RoutingBuilder allowDroppingStops(long penalty) {
+        Validate.nonNegative(penalty, "allowDroppingStops penalty");
         this.droppingPenalty = penalty;
         return this;
     }

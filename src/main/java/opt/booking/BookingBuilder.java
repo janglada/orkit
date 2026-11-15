@@ -225,7 +225,7 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
         }
 
         @Override
-        public BookingSolution solve() {
+        protected BookingSolution doSolve() {
             return new CpSatBookingSolver(horizonStart, horizonDays, goal, resources, appointments, params, listener, warmStart).solve();
         }
     }
