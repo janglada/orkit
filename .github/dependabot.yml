@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # Test libraries move together and never affect consumers.
+      test-dependencies:
+        patterns: ["org.junit*", "org.assertj*", "org.xerial*"]
+      build-plugins:
+        patterns: ["org.apache.maven.plugins*", "org.codehaus.mojo*", "org.jacoco*"]
+    # OR-Tools upgrades change solver behavior and native APIs; review them on their own.
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

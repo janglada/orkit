@@ -1,0 +1,240 @@
+package io.github.janglada.orkit.routing;
+
+import io.github.janglada.orkit.ModelException;
+import io.github.janglada.orkit.OptimizationProblem;
+import io.github.janglada.orkit.Solver;
+import io.github.janglada.orkit.internal.Validate;
+import io.github.janglada.orkit.routing.internal.DepotDef;
+import io.github.janglada.orkit.routing.internal.PickupDeliveryDef;
+import io.github.janglada.orkit.routing.internal.RoutingSpec;
+import io.github.janglada.orkit.routing.internal.StopDef;
+import io.github.janglada.orkit.routing.internal.VehicleDef;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
+
+/** Fluent builder for vehicle routing problems. Entry point: {@code Optimize.vehicleRouting()}. */
+public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
+
+    private final List<DepotDef> depots        = new ArrayList<>();
+    private final Set<String> depotIds        = new LinkedHashSet<>();
+    private final List<VehicleDef> vehicles = new ArrayList<>();
+    private final List<StopDef> stops       = new ArrayList<>();
+    private final Set<String> vehicleIds    = new LinkedHashSet<>();
+    private final Set<String> stopIds       = new LinkedHashSet<>();
+    private final Set<String> stopsWithoutCoordinates = new LinkedHashSet<>();
+    private DistanceSource distanceSource   = DistanceSource.haversine();
+    private long droppingPenalty            = 0;
+    private RoutingGoal goal                = new RoutingGoal.MinimizeTotalDistance();
+    private double travelSpeedKmh           = 40.0;
+    private final List<PickupDeliveryDef> pairs = new ArrayList<>();
+    private PickupDeliveryPolicy pdPolicy   = PickupDeliveryPolicy.ANY;
+
+    /**
+     * Registers a depot location that vehicles may depart from and return to.
+     *
+     * <p>This method is accumulative: each call adds another depot, in declaration order.
+     * The first registered depot is the default for vehicles that do not specify one
+     * via {@link VehicleConfig#startsAt(String)} / {@link VehicleConfig#endsAt(String)}.
+     * At least one depot is required.
+     *
+     * @throws io.github.janglada.orkit.ModelException if {@code id} is blank or a depot with this id was already registered
+     */
+    public RoutingBuilder depot(String id, double lat, double lon) {
+        Validate.nonBlank(id, "depot id");
+        StopConfig.validateCoordinates(lat, lon, "Depot '" + id + "'");
+        if (!depotIds.add(id)) {
+            throw new ModelException("Duplicate depot id: '" + id + "'.");
+        }
+        depots.add(new DepotDef(id, lat, lon));
+        return this;
+    }
+
+    /** Adds a single vehicle configured by the lambda, which receives a fresh {@link VehicleConfig}. */
+    public RoutingBuilder vehicle(String id, Consumer<VehicleConfig> config) {
+        Validate.nonBlank(id, "vehicle id");
+        if (!vehicleIds.add(id)) {
+            throw new ModelException("Duplicate vehicle id: '" + id + "'.");
+        }
+        VehicleConfig cfg = new VehicleConfig();
+        cfg.id = id;
+        config.accept(cfg);
+        vehicles.add(new VehicleDef(id, cfg.capacity, cfg.maxDistanceMeters,
+                cfg.startDepotId, cfg.endDepotId,
+                cfg.availableFromMin, cfg.availableUntilMin, cfg.maxRouteDurationMin,
+                cfg.fixedCost, Set.copyOf(cfg.skills)));
+        return this;
+    }
+
+    /**
+     * Adds {@code count} identical vehicles configured by the same lambda. Generated ids are
+     * {@code "vehicle-N"} for the smallest N not already taken, so they never collide with
+     * ids declared via {@link #vehicle(String, Consumer)}.
+     */
+    public RoutingBuilder vehicles(int count, Consumer<VehicleConfig> config) {
+        int next = 1;
+        for (int i = 0; i < count; i++) {
+            String id;
+            do { id = "vehicle-" + next++; } while (vehicleIds.contains(id));
+            vehicle(id, config);
+        }
+        return this;
+    }
+
+    /** Adds a stop (delivery/pickup node) configured by the lambda, which receives a fresh {@link StopConfig}. */
+    public RoutingBuilder stop(String id, Consumer<StopConfig> config) {
+        Validate.nonBlank(id, "stop id");
+        if (!stopIds.add(id)) {
+            throw new ModelException("Duplicate stop id: '" + id + "'.");
+        }
+        StopConfig cfg = new StopConfig();
+        cfg.id = id;
+        config.accept(cfg);
+        if (!cfg.atSet) stopsWithoutCoordinates.add(id);
+        stops.add(new StopDef(id, cfg.lat, cfg.lon, cfg.demand,
+                cfg.serviceTimeMin, cfg.openMin, cfg.closeMin, Set.copyOf(cfg.requiredSkills), cfg.dropPenalty));
+        return this;
+    }
+
+    /**
+     * Requires {@code pickupStopId} to be visited before {@code deliveryStopId} by the same
+     * vehicle. The pickup stop's {@code demand} is the load carried between the two; the
+     * delivery stop's demand must be omitted or equal to it. When dropping is allowed, the two
+     * stops are dropped together and the penalty is paid per stop; if the two stops have
+     * different {@link StopConfig#penaltyIfDropped(long) penalties}, the larger one applies to both. Ids may be declared later;
+     * they are resolved when the problem is built.
+     */
+    public RoutingBuilder pickupAndDelivery(String pickupStopId, String deliveryStopId) {
+        Validate.nonBlank(pickupStopId, "pickup stop id");
+        Validate.nonBlank(deliveryStopId, "delivery stop id");
+        pairs.add(new PickupDeliveryDef(pickupStopId, deliveryStopId));
+        return this;
+    }
+
+    /** Ordering policy among pickup-and-delivery pairs on one vehicle; default {@link PickupDeliveryPolicy#ANY}. */
+    public RoutingBuilder pickupAndDeliveryPolicy(PickupDeliveryPolicy policy) {
+        if (policy == null) throw new ModelException("pickupAndDeliveryPolicy must not be null.");
+        this.pdPolicy = policy;
+        return this;
+    }
+
+    /** Sets how inter-node distances are sourced; defaults to {@link DistanceSource#haversine()}. */
+    public RoutingBuilder distances(DistanceSource source) {
+        if (source == null) {
+            throw new ModelException("distances() must not be null.");
+        }
+        this.distanceSource = source;
+        return this;
+    }
+
+    /**
+     * Allows stops to be dropped from routes. The penalty is added to the objective
+     * for each unserved stop, so the solver only drops a stop when it is cheaper than serving it.
+     * {@code 0} (the default) makes every stop mandatory unless it sets its own
+     * {@link StopConfig#penaltyIfDropped(long) penalty}, which takes precedence over this one.
+     *
+     * @throws ModelException if {@code penalty} is negative
+     */
+    public RoutingBuilder allowDroppingStops(long penalty) {
+        Validate.nonNegative(penalty, "allowDroppingStops penalty");
+        this.droppingPenalty = penalty;
+        return this;
+    }
+
+    /** Sets the optimization goal; defaults to {@link Goals#totalDistance()}. */
+    public RoutingBuilder goal(RoutingGoal routingGoal) {
+        if (routingGoal == null) throw new ModelException("goal() must not be null.");
+        this.goal = routingGoal;
+        return this;
+    }
+
+    /**
+     * Average vehicle speed used to convert distances to travel times for time-window
+     * constraints. Default: 40 km/h. Typical values: urban 20–30, suburban 50, highway 90.
+     * Ignored when {@link DistanceSource#fromMatrices(long[][], long[][])} supplies travel times.
+     */
+    public RoutingBuilder travelSpeedKmh(double speedKmh) {
+        if (speedKmh <= 0) throw new io.github.janglada.orkit.ModelException("travelSpeedKmh must be > 0, got: " + speedKmh);
+        this.travelSpeedKmh = speedKmh;
+        return this;
+    }
+
+    /** Builds an immutable, reusable problem instance. */
+    public RoutingProblem build() {
+        validate();
+        return new RoutingProblemImpl(snapshot());
+    }
+
+    /**
+     * Builds the problem and returns a {@link RoutingSolver} (a {@link Solver} subtype)
+     * that exposes routing-specific knobs ({@code firstSolution}, {@code improveWith}).
+     */
+    @Override
+    public RoutingSolver solver() {
+        validate();
+        return new RoutingSolver(snapshot());
+    }
+
+    // ── Internals ────────────────────────────────────────────────────────────
+
+    private void validate() {
+        if (depots.isEmpty())  throw new ModelException("depot(...) must be called.");
+        if (vehicles.isEmpty()) throw new ModelException("At least one vehicle is required.");
+        if (stops.isEmpty())    throw new ModelException("At least one stop is required.");
+        if (distanceSource instanceof DistanceSource.Haversine && !stopsWithoutCoordinates.isEmpty()) {
+            throw new ModelException("Stop '" + stopsWithoutCoordinates.iterator().next()
+                    + "' must set coordinates via .at(lat, lon) when using haversine distances.");
+        }
+        validatePairs();
+    }
+
+    private void validatePairs() {
+        Map<String, StopDef> byId = new HashMap<>();
+        for (StopDef s : stops) byId.put(s.id(), s);
+        Set<String> paired = new LinkedHashSet<>();
+        for (PickupDeliveryDef pair : pairs) {
+            if (pair.pickupId().equals(pair.deliveryId())) {
+                throw new ModelException("pickupAndDelivery: pickup and delivery must be distinct stops, got '"
+                        + pair.pickupId() + "'.");
+            }
+            StopDef pickup = byId.get(pair.pickupId());
+            StopDef delivery = byId.get(pair.deliveryId());
+            if (pickup == null) throw new ModelException("pickupAndDelivery: unknown stop id '" + pair.pickupId() + "'.");
+            if (delivery == null) throw new ModelException("pickupAndDelivery: unknown stop id '" + pair.deliveryId() + "'.");
+            for (String id : List.of(pair.pickupId(), pair.deliveryId())) {
+                if (!paired.add(id)) {
+                    throw new ModelException("Stop '" + id + "' already belongs to a pickup-and-delivery pair.");
+                }
+            }
+            if (delivery.demand() != 0 && delivery.demand() != pickup.demand()) {
+                throw new ModelException("pickupAndDelivery('" + pair.pickupId() + "','" + pair.deliveryId()
+                        + "'): delivery demand " + delivery.demand() + " must equal pickup demand "
+                        + pickup.demand() + " (or be omitted).");
+            }
+        }
+    }
+
+    private RoutingSpec snapshot() {
+        return new RoutingSpec(depots, vehicles, stops, distanceSource, droppingPenalty, goal,
+                travelSpeedKmh, pairs, pdPolicy);
+    }
+
+    private static final class RoutingProblemImpl implements RoutingProblem {
+
+        private final RoutingSpec spec;
+
+        RoutingProblemImpl(RoutingSpec spec) {
+            this.spec = spec;
+        }
+
+        @Override
+        public RoutingSolver solver() {
+            return new RoutingSolver(spec);
+        }
+    }
+}

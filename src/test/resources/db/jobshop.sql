@@ -7,7 +7,7 @@
 --  machine (machine_id) or target a whole group (machine_group) so the solver
 --  picks any free member.
 --
---  Loaded by opt.jobshop.JobShopDbExampleTest via opt.db.TestDatabase into an
+--  Loaded by io.github.janglada.orkit.jobshop.JobShopDbExampleTest via io.github.janglada.orkit.db.TestDatabase into an
 --  in-memory SQLite database; no file is written to disk.
 -- ============================================================================
 

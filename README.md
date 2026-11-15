@@ -1,34 +1,49 @@
 # OR-Tools High-Level DSL
 
-A fluent Java 25 DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.15, covering seven optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, **multiple knapsack**, **container loading (3D bin packing)**, **resource booking (appointment scheduling)**, and **cutting stock**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
+A fluent Java 21+ DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.15, covering seven optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, **multiple knapsack**, **container loading (3D bin packing)**, **resource booking (appointment scheduling)**, and **cutting stock**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
+
+## Installation
+
+Not yet published to Maven Central. Install it locally with `mvn install`, then depend on:
+
+```xml
+<dependency>
+    <groupId>io.github.janglada</groupId>
+    <artifactId>orkit</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+</dependency>
+```
 
 ## Requirements
 
-- **Java 25+** and **Maven**.
-- OR-Tools native library is pulled automatically per platform. The POM ships the `ortools-linux-x86-64` dependency (runtime scope); `com.google.ortools.Loader` auto-extracts it at startup. macOS arm64 or Windows x86-64 users should swap that artifact for `ortools-darwin-aarch64` or `ortools-win32-x86-64` respectively (same `${ortools.version}`).
+- **Java 21+** and **Maven 3.6.3+** (enforced by the build). CI runs on Linux, macOS and Windows with JDK 21, and on Linux with JDK 25.
+- **Native libraries need no setup.** `ortools-java` depends on the OR-Tools native libraries for Linux (x86-64, arm64), macOS (x86-64, arm64) and Windows (x86-64), and `com.google.ortools.Loader` extracts the right one at startup. To ship a smaller application for one platform, exclude the other `ortools-<platform>` artifacts from `ortools-java`.
+- **JDK 24+:** OR-Tools loads its JNI library with `System.loadLibrary`, which the JDK now flags as restricted. Run your application with `--enable-native-access=ALL-UNNAMED` to silence the warning (later JDKs will require it). The build already passes it to the tests.
 
 ## Build & test
 
 ```bash
-mvn test
+mvn verify
 ```
 
-The suite is about 400 JUnit tests, including per-domain invariant validators, database-driven
-examples, a child-JVM native-memory guard, and a child-JVM check that builders work without
-`Optimize`. JaCoCo writes a line-coverage report to `target/site/jacoco/index.html` on every
-`mvn test` (about 99% of `src/main` lines, excluding the examples).
+`verify` compiles with all lint warnings treated as errors, runs about 430 JUnit tests, enforces
+the JaCoCo coverage floor (97% of lines, 90% of branches), and builds the sources and javadoc
+jars with doclint on. The tests include per-domain invariant validators, database-driven
+examples, a child-JVM native-memory guard, a child-JVM check that builders work without
+`Optimize`, and a check that no public signature exposes an OR-Tools type. The coverage report
+is written to `target/site/jacoco/index.html`; `mvn test` alone is faster when iterating.
 
 
 
 ## Quick start
 
-All entry points live on `opt.Optimize`. Each builder ends with `.solver()...solve()`, which returns a typed result (`JobShopSchedule`, `EmployeeRoster`, `RoutingPlan`, `MultipleKnapsackSolution`, `PackingSolution`, `BookingSolution`, `CuttingSolution`). Every builder selects its objective with `.goal(...)` from the domain's `Goals` factory, and `.build()` returns an immutable problem that can be solved repeatedly (see [Solver knobs](#solver-knobs)).
+All entry points live on `io.github.janglada.orkit.Optimize`. Each builder ends with `.solver()...solve()`, which returns a typed result (`JobShopSchedule`, `EmployeeRoster`, `RoutingPlan`, `MultipleKnapsackSolution`, `PackingSolution`, `BookingSolution`, `CuttingSolution`). Every builder selects its objective with `.goal(...)` from the domain's `Goals` factory, and `.build()` returns an immutable problem that can be solved repeatedly (see [Solver knobs](#solver-knobs)).
 
 ### Job-shop scheduling
 
 ```java
-import opt.Optimize;
-import opt.jobshop.JobShopSchedule;
+import io.github.janglada.orkit.Optimize;
+import io.github.janglada.orkit.jobshop.JobShopSchedule;
 import java.time.Duration;
 
 JobShopSchedule schedule = Optimize.jobShop()
@@ -141,11 +156,11 @@ System.out.println("Rush late by " + schedule.tardinessOf("Rush"));
 ### Employee shift scheduling
 
 ```java
-import opt.Optimize;
-import opt.scheduling.EmployeeRoster;
-import opt.scheduling.ShiftAssignment;
-import static opt.scheduling.Goals.*;
-import static opt.scheduling.Rules.*;
+import io.github.janglada.orkit.Optimize;
+import io.github.janglada.orkit.scheduling.EmployeeRoster;
+import io.github.janglada.orkit.scheduling.ShiftAssignment;
+import static io.github.janglada.orkit.scheduling.Goals.*;
+import static io.github.janglada.orkit.scheduling.Rules.*;
 import java.time.*;
 import java.time.DayOfWeek;
 
@@ -189,8 +204,8 @@ System.out.println(roster.staffOf("Night", LocalDate.of(2026, 7, 10)));
 ### Vehicle routing
 
 ```java
-import opt.Optimize;
-import opt.routing.*;
+import io.github.janglada.orkit.Optimize;
+import io.github.janglada.orkit.routing.*;
 import java.time.Duration;
 import java.time.LocalTime;
 
@@ -275,9 +290,9 @@ plan.routeOf("Reefer").ifPresent(r -> System.out.println("Reefer: " + r.stops())
 ### Multiple knapsack
 
 ```java
-import opt.Optimize;
-import opt.knapsack.BinAssignment;
-import opt.knapsack.MultipleKnapsackSolution;
+import io.github.janglada.orkit.Optimize;
+import io.github.janglada.orkit.knapsack.BinAssignment;
+import io.github.janglada.orkit.knapsack.MultipleKnapsackSolution;
 import java.time.Duration;
 
 MultipleKnapsackSolution sol = Optimize.multipleKnapsack()
@@ -304,8 +319,8 @@ Items may be left out of every bin when total weight exceeds total capacity; tho
 ### Container loading (3D bin packing)
 
 ```java
-import opt.Optimize;
-import opt.packing.*;
+import io.github.janglada.orkit.Optimize;
+import io.github.janglada.orkit.packing.*;
 import java.time.Duration;
 
 PackingSolution sol = Optimize.packing()
@@ -345,8 +360,8 @@ Beyond the classical no-overlap + weight-limit model, boxes opt into stacking su
 ### Resource booking (appointment scheduling)
 
 ```java
-import opt.Optimize;
-import opt.booking.*;
+import io.github.janglada.orkit.Optimize;
+import io.github.janglada.orkit.booking.*;
 import java.time.*;
 
 BookingSolution plan = Optimize.booking()
@@ -384,8 +399,8 @@ Availability may be given as explicit `TimeSlot`s, weekly windows (`available(Da
 ### Cutting stock
 
 ```java
-import opt.Optimize;
-import opt.cutting.*;
+import io.github.janglada.orkit.Optimize;
+import io.github.janglada.orkit.cutting.*;
 import java.time.Duration;
 
 CuttingSolution sol = Optimize.cuttingStock()
@@ -428,29 +443,29 @@ for (StockAssignment a : sol.assignments()) {
 ```
 ## Run examples
 
-Seven runnable mains illustrate each domain. The `exec-maven-plugin` is already wired into the build; pass the main class explicitly:
+Seven runnable mains illustrate each domain. They live in the test sources (`src/test/java/io/github/janglada/orkit/examples`), so they are not shipped in the library jar. The `exec-maven-plugin` runs them on the test classpath; compile the tests first and pass the main class:
 
 ```bash
 # PCB flexible job shop (8 board types, 5 machines, makespan minimization)
-mvn exec:java -Dexec.mainClass=opt.examples.PcbManufacturingJobShop
+mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.PcbManufacturingJobShop
 
 # Hospital weekly nurse roster (12 nurses, 21 shifts, labor cost + preferences)
-mvn exec:java -Dexec.mainClass=opt.examples.HospitalNurseScheduling
+mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.HospitalNurseScheduling
 
 # Barcelona parcel delivery VRP (4 vehicles, 18 stops, time windows, SAVINGS + GLS)
-mvn exec:java -Dexec.mainClass=opt.examples.BarcelonaDeliveryVrp
+mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.BarcelonaDeliveryVrp
 
 # Cargo loading — multiple knapsack (3 containers, 9 cargo lots, value maximization)
-mvn exec:java -Dexec.mainClass=opt.examples.CargoLoadingMultipleKnapsack
+mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.CargoLoadingMultipleKnapsack
 
 # Warehouse container loading — 3D bin packing (2 containers, 8 boxes, minimize containers)
-mvn exec:java -Dexec.mainClass=opt.examples.WarehouseContainerPacking
+mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.WarehouseContainerPacking
 
 # Clinic appointment booking (3 doctors, 8 appointments, minimize unscheduled penalty)
-mvn exec:java -Dexec.mainClass=opt.examples.ClinicAppointmentBooking
+mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.ClinicAppointmentBooking
 
 # Steel roll cutting stock (3 stock types, 5 piece types, minimize waste)
-mvn exec:java -Dexec.mainClass=opt.examples.SteelRollCuttingStock
+mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.SteelRollCuttingStock
 ```
 ## Result API
 
@@ -468,9 +483,9 @@ Lookups such as `MultipleKnapsackSolution.binOf(item)` or `PackingSolution.conta
 
 `build()` returns an immutable problem; `solver()` on it (or directly on the builder) returns a fresh solver each call. A solver runs one solve at a time (a second concurrent `solve()` on the same solver throws `ModelException`), so take one solver per thread. Time limits must be positive.
 
-- **Every solver** (`opt.Solver`): `timeLimit(Duration)`, `verbose(boolean)`, `solve()`.
-- **CP-SAT domains** (`opt.CpSatSolver`, all except routing): `workers(int)` (default **8**, CP-SAT's tuned portfolio size, capped at the processors available to the JVM), `seed(int)` (reproducible only with `workers(1)`), `onSolution(Consumer<S>)` to receive each improving intermediate result, `warmStart(S previous)` to hint the search from an earlier feasible result (ids that no longer exist are ignored), and `cancel()` to stop a running solve and keep the best result so far (a cancel issued while the model is still being built is honored too). A listener exception stops the search and is rethrown wrapped in `ModelException`; an `Error` is rethrown as is.
-- **Routing** (`opt.routing.RoutingSolver`): `firstSolution(Strategy)`, `improveWith(Metaheuristic)`, and `cancel()` (best routes so far, or `UNKNOWN` if none was found yet). OR-Tools routing search has no worker count or seed, so those knobs are deliberately absent.
+- **Every solver** (`io.github.janglada.orkit.Solver`): `timeLimit(Duration)`, `verbose(boolean)`, `solve()`.
+- **CP-SAT domains** (`io.github.janglada.orkit.CpSatSolver`, all except routing): `workers(int)` (default **8**, CP-SAT's tuned portfolio size, capped at the processors available to the JVM), `seed(int)` (reproducible only with `workers(1)`), `onSolution(Consumer<S>)` to receive each improving intermediate result, `warmStart(S previous)` to hint the search from an earlier feasible result (ids that no longer exist are ignored), and `cancel()` to stop a running solve and keep the best result so far (a cancel issued while the model is still being built is honored too). A listener exception stops the search and is rethrown wrapped in `ModelException`; an `Error` is rethrown as is.
+- **Routing** (`io.github.janglada.orkit.routing.RoutingSolver`): `firstSolution(Strategy)`, `improveWith(Metaheuristic)`, and `cancel()` (best routes so far, or `UNKNOWN` if none was found yet). OR-Tools routing search has no worker count or seed, so those knobs are deliberately absent.
 
 ```java
 var problem = Optimize.jobShop()....build();
@@ -491,4 +506,10 @@ var better = solver.onSolution(s -> { if (s.makespan() < 100) solver.cancel(); }
 
 ## Project layout
 
-Public API lives in package `opt` (entry point `Optimize`) plus the domain packages `opt.jobshop`, `opt.scheduling`, `opt.routing`, `opt.knapsack`, `opt.packing`, `opt.booking`, and `opt.cutting`. All OR-Tools modeling detail is confined to `*.internal` subpackages and is not part of the supported API.
+Public API lives in package `io.github.janglada.orkit` (entry point `Optimize`) plus the domain subpackages `jobshop`, `scheduling`, `routing`, `knapsack`, `packing`, `booking`, and `cutting`. All OR-Tools modeling detail is confined to `*.internal` subpackages and is not part of the supported API.
+
+Runnable examples are in `src/test/java/io/github/janglada/orkit/examples`. CI is defined in `.github/workflows/ci.yml`; Dependabot (`.github/dependabot.yml`) proposes weekly dependency and GitHub Actions updates.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
