@@ -1,27 +1,45 @@
 # Examples
 
-Seven runnable programs, one per domain. They live in the test sources
-(`src/test/java/io/github/janglada/orkit/examples`), so they are not shipped in the library jar.
+Seven complete programs, one per domain. Each one is larger than the snippets on the domain
+pages and prints a readable report, so they are a good place to see how the pieces fit
+together.
 
-Run one with Maven:
+!!! tip "New here?"
+    Start with the small examples instead: [Getting started](guide/getting-started.md) has a
+    first program explained line by line, and every [domain page](domains/index.md) opens
+    with a quick start.
+
+## How to run them
+
+The examples live in the test sources of the project
+(`src/test/java/io/github/janglada/orkit/examples`), so they are not part of the library jar.
+From the project folder, run one with Maven:
 
 ```bash
 mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.PcbManufacturingJobShop
 ```
 
-| Example | Domain | What it shows |
+Replace the last word with the name of the example you want.
+
+## The seven examples
+
+| Example | Domain | The story |
 |---|---|---|
-| [`PcbManufacturingJobShop`](#pcbmanufacturingjobshop) | [Job-shop](domains/jobshop.md) | Eight board types on five machines with flexible pick-and-place assignment; minimizes makespan and prints a Gantt table. |
-| [`HospitalNurseScheduling`](#hospitalnursescheduling) | [Shift scheduling](domains/scheduling.md) | Twelve nurses and 21 shifts over a week, with skills, rest rules, preferences and labor cost. |
-| [`BarcelonaDeliveryVrp`](#barcelonadeliveryvrp) | [Vehicle routing](domains/routing.md) | Four vans and 18 stops with time windows, capacity, distance caps and driver breaks, using SAVINGS plus guided local search. |
-| [`CargoLoadingMultipleKnapsack`](#cargoloadingmultipleknapsack) | [Multiple knapsack](domains/knapsack.md) | Nine cargo lots into three containers, maximizing loaded value. |
-| [`WarehouseContainerPacking`](#warehousecontainerpacking) | [Container packing](domains/packing.md) | Eight boxes into two containers in 3D, minimizing containers used. |
-| [`ClinicAppointmentBooking`](#clinicappointmentbooking) | [Resource booking](domains/booking.md) | Eight appointments on three rooms, one of them also needing a surgeon; minimizes the unscheduled penalty. |
-| [`SteelRollCuttingStock`](#steelrollcuttingstock) | [Cutting stock](domains/cutting.md) | Beams of five lengths cut from three stock types with a 3 mm kerf, minimizing waste. |
+| [`PcbManufacturingJobShop`](#pcbmanufacturingjobshop) | [Job-shop](domains/jobshop.md) | A factory makes eight kinds of circuit board on five machines. Some steps can run on either of two machines. The program finds the fastest schedule and prints a timetable per machine. |
+| [`HospitalNurseScheduling`](#hospitalnursescheduling) | [Shift scheduling](domains/scheduling.md) | Twelve nurses cover 21 shifts in one week, with skills, rest rules and preferences, at the lowest labor cost. |
+| [`BarcelonaDeliveryVrp`](#barcelonadeliveryvrp) | [Vehicle routing](domains/routing.md) | Four vans deliver to 18 addresses with opening hours, limited capacity, a distance limit and driver breaks. |
+| [`CargoLoadingMultipleKnapsack`](#cargoloadingmultipleknapsack) | [Multiple knapsack](domains/knapsack.md) | Nine cargo lots compete for three containers. The program loads the most valuable combination. |
+| [`WarehouseContainerPacking`](#warehousecontainerpacking) | [Container packing](domains/packing.md) | Eight boxes are placed in two containers in 3D, using as few containers as possible. |
+| [`ClinicAppointmentBooking`](#clinicappointmentbooking) | [Resource booking](domains/booking.md) | Eight appointments share three rooms. One of them also needs a surgeon. The least important ones are left out when space runs short. |
+| [`SteelRollCuttingStock`](#steelrollcuttingstock) | [Cutting stock](domains/cutting.md) | Beams of five lengths are cut from three kinds of stock with a 3 mm blade, wasting as little steel as possible. |
+
+Click "Source" under an example to read its full code.
 
 ## PCB flexible job shop { #pcbmanufacturingjobshop }
 
-Eight board types on five machines with flexible pick-and-place assignment; minimizes makespan and prints a Gantt table.
+A factory makes eight kinds of circuit board on five machines. Some steps can run on either
+of two pick-and-place machines, and the solver chooses. The goal is to finish everything as
+early as possible. The program prints the timetable of each machine.
 
 ```bash
 mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.PcbManufacturingJobShop
@@ -35,7 +53,8 @@ mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples
 
 ## Hospital weekly nurse roster { #hospitalnursescheduling }
 
-Twelve nurses and 21 shifts over a week, with skills, rest rules, preferences and labor cost.
+Twelve nurses cover 21 shifts over one week. The model uses skills, rest rules and personal
+preferences, and looks for the roster with the lowest labor cost.
 
 ```bash
 mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.HospitalNurseScheduling
@@ -49,7 +68,9 @@ mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples
 
 ## Barcelona parcel delivery { #barcelonadeliveryvrp }
 
-Four vans and 18 stops with time windows, capacity, distance caps and driver breaks, using SAVINGS plus guided local search.
+Four vans deliver to 18 addresses. Customers have opening hours, vans have limited capacity
+and a distance limit, and drivers take a break. The search builds first routes with the
+`SAVINGS` method and improves them with guided local search.
 
 ```bash
 mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.BarcelonaDeliveryVrp
@@ -63,7 +84,8 @@ mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples
 
 ## Cargo loading { #cargoloadingmultipleknapsack }
 
-Nine cargo lots into three containers, maximizing loaded value.
+Nine cargo lots compete for three containers with weight limits. The program loads the
+combination with the highest total value and lists what stays behind.
 
 ```bash
 mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.CargoLoadingMultipleKnapsack
@@ -77,7 +99,8 @@ mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples
 
 ## Warehouse container loading { #warehousecontainerpacking }
 
-Eight boxes into two containers in 3D, minimizing containers used.
+Eight boxes are placed in two containers in three dimensions. The goal is to use as few
+containers as possible. The program prints the position of every box.
 
 ```bash
 mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.WarehouseContainerPacking
@@ -91,7 +114,8 @@ mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples
 
 ## Clinic appointment booking { #clinicappointmentbooking }
 
-Eight appointments on three rooms, one of them also needing a surgeon; minimizes the unscheduled penalty.
+Eight appointments share three rooms, and one of them also needs a surgeon. Each appointment
+has a penalty for being left out, and the solver keeps the total penalty as low as possible.
 
 ```bash
 mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.ClinicAppointmentBooking
@@ -105,7 +129,8 @@ mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples
 
 ## Steel roll cutting { #steelrollcuttingstock }
 
-Beams of five lengths cut from three stock types with a 3 mm kerf, minimizing waste.
+Beams of five lengths are cut from three kinds of stock. The blade removes 3 mm at every cut.
+The goal is to waste as little steel as possible.
 
 ```bash
 mvn -q test-compile exec:java -Dexec.mainClass=io.github.janglada.orkit.examples.SteelRollCuttingStock

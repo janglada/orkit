@@ -1,7 +1,11 @@
 # API reference
 
-The complete Javadoc for the public API is generated from the sources and bundled with this
-site.
+The guide and the domain pages explain how to use orkit, with examples. This page is for
+when you need the exact details of one class or method: every parameter, every return value,
+every exception.
+
+That detail lives in the Javadoc, which is generated from the source code and bundled with
+this site.
 
 [Open the Javadoc :material-open-in-new:](javadoc/index.html){ .md-button .md-button--primary target=_blank }
 
@@ -18,11 +22,16 @@ site.
 | [`...orkit.booking`](javadoc/io/github/janglada/orkit/booking/package-summary.html) | `BookingBuilder`, `ResourceConfig`, `AppointmentConfig`, `TimeSlot`, `BookingSolution`, `AppointmentAssignment` |
 | [`...orkit.cutting`](javadoc/io/github/janglada/orkit/cutting/package-summary.html) | `CuttingBuilder`, `StockConfig`, `PieceConfig`, `CuttingSolution`, `StockAssignment` |
 
-## Stability
+Each domain package also has a `Goals` class with the goals you can choose from.
 
-The supported API is everything in the packages above. Packages ending in `.internal` hold the
-OR-Tools modeling code; they are public only so the domain packages can reach them, are left
-out of this reference, and may change without notice.
+## What you can rely on
 
-The project is at `0.1.0-SNAPSHOT`: the API can still change between builds. Breaking changes
-are listed in the [changelog](changelog.md).
+**Use only the packages listed above.** They are the supported API.
+
+Packages whose name ends in `.internal` contain the code that talks to OR-Tools. They are
+not meant to be used directly, they are left out of the Javadoc, and they may change at any
+time without notice.
+
+**The version is still `0.1.0-SNAPSHOT`.** That means the library is not finished: method
+names and behavior can still change from one build to the next. Changes that could break
+your code are listed in the [changelog](changelog.md).

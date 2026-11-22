@@ -47,9 +47,10 @@ nav:
   - Guide:
       - Getting started: guide/getting-started.md
       - Core concepts: guide/concepts.md
-      - Solver knobs: guide/solver-knobs.md
+      - Solver settings: guide/solver-knobs.md
       - Diagnostics: guide/diagnostics.md
       - Modeling notes: guide/modeling-notes.md
+      - Glossary: guide/glossary.md
   - Domains:
       - domains/index.md
       - Job-shop scheduling: domains/jobshop.md
