@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +38,7 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
     private LocalDate horizonStart = null;
     private int horizonDays = 0;
     private BookingGoal goal = Goals.maximizeScheduledAppointments();
+    private boolean preferEarlyStarts = true;
 
     /** Sets the horizon: {@code days} days starting at midnight of {@code start}. All availability and time bounds must fall within it. */
     public BookingBuilder horizon(LocalDate start, int days) {
@@ -53,6 +55,17 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
     public BookingBuilder goal(BookingGoal g) {
         if (g == null) throw new ModelException("goal() must not be null.");
         this.goal = g;
+        return this;
+    }
+
+    /**
+     * Breaks ties in favor of earlier start times: among solutions equally good for the goal,
+     * the one with the smallest sum of start times wins, so appointments are not placed at
+     * arbitrary points of their windows. On by default; {@link BookingSolution#objective()}
+     * always reports the goal alone.
+     */
+    public BookingBuilder preferEarlyStarts(boolean prefer) {
+        this.preferEarlyStarts = prefer;
         return this;
     }
 
@@ -79,8 +92,17 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
         if (cfg.duration() == null) {
             throw new ModelException("Appointment '" + id + "' must set a duration via .duration(...).");
         }
-        if (cfg.resourceIds() == null || cfg.resourceIds().length == 0) {
+        List<List<String>> groups = cfg.groups();
+        if (groups.isEmpty()) {
             throw new ModelException("Appointment '" + id + "' must set candidate resources via .requiresAnyOf(...).");
+        }
+        Set<String> seen = new HashSet<>();
+        for (List<String> group : groups) {
+            for (String r : new LinkedHashSet<>(group)) {
+                if (!seen.add(r)) {
+                    throw new ModelException("Appointment '" + id + "' lists resource '" + r + "' in more than one requirement.");
+                }
+            }
         }
         long durationMinutes = cfg.duration().toMinutes();
         if (cfg.earliestDt() != null && cfg.latestDt() != null
@@ -89,7 +111,7 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
                     + " plus duration " + durationMinutes + "m exceeds latest " + cfg.latestDt() + ".");
         }
         appointments.put(id, new AppointmentTemplate(id, durationMinutes, cfg.buffer().toMinutes(),
-                List.of(cfg.resourceIds()), cfg.earliestDt(), cfg.latestDt(), cfg.penalty()));
+                groups, cfg.earliestDt(), cfg.latestDt(), cfg.penalty()));
         return this;
     }
 
@@ -103,7 +125,8 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
         for (ResourceTemplate t : resources.values()) resourceDefs.add(expandResource(t, epoch));
         List<AppointmentDef> appointmentDefs = new ArrayList<>();
         for (AppointmentTemplate t : appointments.values()) appointmentDefs.add(resolveAppointment(t, epoch));
-        return new BookingProblem(horizonStart, horizonDays, goal, List.copyOf(resourceDefs), List.copyOf(appointmentDefs));
+        return new BookingProblem(horizonStart, horizonDays, goal, List.copyOf(resourceDefs), List.copyOf(appointmentDefs),
+                preferEarlyStarts);
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
@@ -158,7 +181,7 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
     private AppointmentDef resolveAppointment(AppointmentTemplate t, LocalDateTime epoch) {
         Long earliest = t.earliest() == null ? null : minutesFromEpoch(epoch, t.earliest(), "earliest", t.id());
         Long latest = t.latest() == null ? null : minutesFromEpoch(epoch, t.latest(), "latest", t.id());
-        return new AppointmentDef(t.id(), t.durationMinutes(), t.bufferMinutes(), t.resourceIds(), earliest, latest, t.penalty());
+        return new AppointmentDef(t.id(), t.durationMinutes(), t.bufferMinutes(), t.resourceGroups(), earliest, latest, t.penalty());
     }
 
     private long minutesFromEpoch(LocalDateTime epoch, LocalDateTime dt, String label, String apptId) {
@@ -179,7 +202,7 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
     private record ResourceTemplate(String id, List<TimeSlot> slots, List<WeeklyWindow> weekly) {}
 
     /** A declared appointment before its wall-clock bounds are resolved against the horizon. */
-    private record AppointmentTemplate(String id, long durationMinutes, long bufferMinutes, List<String> resourceIds,
+    private record AppointmentTemplate(String id, long durationMinutes, long bufferMinutes, List<List<String>> resourceGroups,
                                        LocalDateTime earliest, LocalDateTime latest, long penalty) {}
 
     // ── Problem + Solver ────────────────────────────────────────────────────
@@ -191,19 +214,21 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
         private final BookingGoal goal;
         private final List<ResourceDef> resources;
         private final List<AppointmentDef> appointments;
+        private final boolean preferEarlyStarts;
 
         BookingProblem(LocalDate horizonStart, int horizonDays, BookingGoal goal,
-                       List<ResourceDef> resources, List<AppointmentDef> appointments) {
+                       List<ResourceDef> resources, List<AppointmentDef> appointments, boolean preferEarlyStarts) {
             this.horizonStart = horizonStart;
             this.horizonDays = horizonDays;
             this.goal = goal;
             this.resources = resources;
             this.appointments = appointments;
+            this.preferEarlyStarts = preferEarlyStarts;
         }
 
         @Override
         public CpSatSolver<BookingSolution> solver() {
-            return new BookingSolver(horizonStart, horizonDays, goal, resources, appointments);
+            return new BookingSolver(horizonStart, horizonDays, goal, resources, appointments, preferEarlyStarts);
         }
     }
 
@@ -214,19 +239,22 @@ public final class BookingBuilder implements CpSatProblem<BookingSolution> {
         private final BookingGoal goal;
         private final List<ResourceDef> resources;
         private final List<AppointmentDef> appointments;
+        private final boolean preferEarlyStarts;
 
         BookingSolver(LocalDate horizonStart, int horizonDays, BookingGoal goal,
-                      List<ResourceDef> resources, List<AppointmentDef> appointments) {
+                      List<ResourceDef> resources, List<AppointmentDef> appointments, boolean preferEarlyStarts) {
             this.horizonStart = horizonStart;
             this.horizonDays = horizonDays;
             this.goal = goal;
             this.resources = resources;
             this.appointments = appointments;
+            this.preferEarlyStarts = preferEarlyStarts;
         }
 
         @Override
         protected BookingSolution doSolve() {
-            return new CpSatBookingSolver(horizonStart, horizonDays, goal, resources, appointments, params, listener, warmStart).solve();
+            return new CpSatBookingSolver(horizonStart, horizonDays, goal, resources, appointments, preferEarlyStarts,
+                    params, listener, warmStart).solve();
         }
     }
 }

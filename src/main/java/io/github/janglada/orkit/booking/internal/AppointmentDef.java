@@ -9,15 +9,16 @@ import java.util.List;
  * @param id              unique appointment id
  * @param durationMinutes how long the appointment occupies its chosen resource
  * @param bufferMinutes   extra time the resource stays blocked after the appointment
- * @param resourceIds     candidate resources; the appointment is booked on at most one
+ * @param resourceGroups  requirement groups; when scheduled, one resource of every group is booked
+ *                        at the same time
  * @param earliestOffset  earliest start minute, or {@code null} for "no lower bound"
  * @param latestOffset    latest end minute, or {@code null} for "no upper bound"
  * @param penalty         penalty incurred if this appointment is left unscheduled
  */
-public record AppointmentDef(String id, long durationMinutes, long bufferMinutes, List<String> resourceIds,
+public record AppointmentDef(String id, long durationMinutes, long bufferMinutes, List<List<String>> resourceGroups,
                              Long earliestOffset, Long latestOffset, long penalty) {
-    /** Defensive copy of the candidate-resource list. */
+    /** Defensive copy of the requirement groups. */
     public AppointmentDef {
-        resourceIds = List.copyOf(resourceIds);
+        resourceGroups = resourceGroups.stream().map(List::copyOf).toList();
     }
 }

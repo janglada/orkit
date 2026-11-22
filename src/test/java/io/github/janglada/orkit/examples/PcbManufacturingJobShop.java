@@ -100,8 +100,11 @@ public class PcbManufacturingJobShop {
 
         // ── Results ───────────────────────────────────────────────────────────
         System.out.printf("%nStatus  : %s%n", schedule.status());
-        System.out.printf("Makespan: %d minutes (%.1f hours)%n%n",
+        System.out.printf("Makespan: %d minutes (%.1f hours)%n",
                 schedule.makespan(), schedule.makespan() / 60.0);
+        schedule.bestBound().ifPresent(b -> System.out.printf("Bound   : %.0f minutes (gap %.1f%%)%n",
+                b, 100 * schedule.gap().orElse(0)));
+        System.out.println();
 
         // Gantt chart per machine
         Gantt gantt = schedule.asGantt();

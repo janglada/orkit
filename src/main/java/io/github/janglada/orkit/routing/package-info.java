@@ -14,6 +14,13 @@
  * {@link io.github.janglada.orkit.ModelException}. Each solved {@link io.github.janglada.orkit.routing.Route} reports its
  * start depot via {@link io.github.janglada.orkit.routing.Route#depotId()}.
  *
+ * <p><b>Capacities, time and cost.</b> Vehicles and stops may declare several named capacity
+ * dimensions; stops may have hard windows and soft deadlines; vehicles may have availability
+ * windows, route-duration caps, driver breaks, and per-meter and per-minute costs used by
+ * {@link io.github.janglada.orkit.routing.Goals#totalCost()}. The solver reports every accepted
+ * solution through {@link io.github.janglada.orkit.routing.RoutingSolver#onSolution} and can start
+ * from an earlier plan through {@link io.github.janglada.orkit.routing.RoutingSolver#warmStart}.
+ *
  * <p><b>Limitation: no time-dependent travel.</b> The native OR-Tools
  * {@code RoutingModel} transit callback is a pure function of
  * {@code (fromNode, toNode)} (optionally vehicle) and cannot read the

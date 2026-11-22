@@ -3,7 +3,6 @@ package io.github.janglada.orkit.cutting;
 import io.github.janglada.orkit.ModelException;
 import io.github.janglada.orkit.SolveStatus;
 import io.github.janglada.orkit.cutting.StockAssignment.CutPiece;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -579,13 +578,22 @@ class CuttingTest {
         ).isInstanceOf(ModelException.class).hasMessageContaining("2D cutting requires every stock and piece to declare a width");
     }
 
-    // ── T-Ct26: guillotine cutting is not yet supported (future item) ───────────
+    // ── T-Ct26: guillotine layouts are edge-to-edge cuttable ───────────────────
 
-    @Disabled("guillotine cutting is planned; 2D non-guillotine supported today")
     @Test
-    void guillotineNotYetSupported() {
-        // Placeholder marker for the future guillotine cutting constraint family.
-        // A sound general recursive guillotine model is out of scope; 2D non-guillotine
-        // (no guillotine constraint) is the supported 2D mode today.
+    void guillotineLayoutsAreEdgeToEdgeCuttable() {
+        CuttingSolution sol = new CuttingBuilder()
+                .stock("S", s -> s.length(20).width(12).quantity(3))
+                .required("A", p -> p.length(7).width(5).quantity(4))
+                .required("B", p -> p.length(6).width(3).quantity(5))
+                .guillotine(true)
+                .goal(Goals.minimizeStockUsed())
+                .solver().timeLimit(Duration.ofSeconds(10)).solve();
+        assertThat(sol.isFeasible()).isTrue();
+        assertThat(sol.unplacedPieces()).isEmpty();
+        CuttingCapabilitiesTest.assertValid2D(sol, 0);
+        for (StockAssignment a : sol.assignments()) {
+            assertThat(CuttingCapabilitiesTest.isGuillotine(a.pieces(), 0, 0, a.length(), a.width())).isTrue();
+        }
     }
 }

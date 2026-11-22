@@ -1,6 +1,7 @@
 package io.github.janglada.orkit.scheduling;
 
 import io.github.janglada.orkit.ModelException;
+import io.github.janglada.orkit.internal.Validate;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -18,6 +19,8 @@ public final class EmployeeConfig {
     int costPerHour = 0;
     final Set<DayOfWeek> availableDays = EnumSet.noneOf(DayOfWeek.class);
     int maxHoursPerWeek = 0;
+    int minHoursPerWeek = 0;
+    int contractHoursPerWeek = 0;
     final Set<String> preferredShifts = new LinkedHashSet<>();
     final Set<LocalDate> blockedDates = new LinkedHashSet<>();
 
@@ -46,6 +49,27 @@ public final class EmployeeConfig {
     public EmployeeConfig maxHoursPerWeek(int hours) {
         if (hours <= 0) throw new ModelException("maxHoursPerWeek must be > 0, got: " + hours);
         this.maxHoursPerWeek = hours;
+        return this;
+    }
+
+    /**
+     * Requires at least this many hours in every full week of the horizon (days 1-7, 8-14, ...
+     * from the horizon start); a trailing partial week is not constrained.
+     */
+    public EmployeeConfig minHoursPerWeek(int hours) {
+        Validate.positive(hours, "minHoursPerWeek");
+        this.minHoursPerWeek = hours;
+        return this;
+    }
+
+    /**
+     * Contracted hours per full week of the horizon (as for {@link #minHoursPerWeek(int)}).
+     * Every minute above or below is penalized with {@link Goals#penalizeContractDeviation(long)},
+     * or its default weight when that goal is not declared.
+     */
+    public EmployeeConfig contractHoursPerWeek(int hours) {
+        Validate.positive(hours, "contractHoursPerWeek");
+        this.contractHoursPerWeek = hours;
         return this;
     }
 

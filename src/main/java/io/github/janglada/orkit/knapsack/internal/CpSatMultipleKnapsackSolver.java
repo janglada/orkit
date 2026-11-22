@@ -99,7 +99,7 @@ public final class CpSatMultipleKnapsackSolver {
 
         if (warmStart != null) applyWarmStart(model, x);
 
-        CpSatParams.Extractor<MultipleKnapsackSolution> extract = (v, status, runtime) -> {
+        CpSatParams.Extractor<MultipleKnapsackSolution> extract = (v, status, runtime, diag) -> {
             long totalProfit = 0;
             List<BinAssignment> assignments = new ArrayList<>();
             List<String> unassignedItems = new ArrayList<>();
@@ -144,7 +144,7 @@ public final class CpSatMultipleKnapsackSolver {
                     ? OptionalDouble.of(totalProfit)
                     : OptionalDouble.empty();
 
-            return new MultipleKnapsackSolution(status, objValue, runtime, totalProfit, assignments, unassignedItems);
+            return new MultipleKnapsackSolution(status, objValue, runtime, totalProfit, assignments, unassignedItems, diag);
         };
         return params.solve(model, extract, listener);
     }

@@ -8,6 +8,7 @@ import io.github.janglada.orkit.routing.internal.RoutingSpec;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Routing-specific solver that adds {@link #firstSolution} and {@link #improveWith}
@@ -28,6 +29,8 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
     private Metaheuristic metaheuristic = Metaheuristic.AUTOMATIC;
     private final AtomicBoolean solving = new AtomicBoolean();
     private volatile boolean cancelRequested;
+    private Consumer<RoutingPlan> listener;
+    private RoutingPlan warmStart;
 
     RoutingSolver(RoutingSpec spec) {
         this.spec = spec;
@@ -62,6 +65,38 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
     }
 
     /**
+     * Registers a listener invoked for every solution the search accepts. The listener receives
+     * a fully built plan whose status is {@link io.github.janglada.orkit.SolveStatus#FEASIBLE}; it
+     * runs on the solver thread and should return quickly. Arrival times on intermediate plans
+     * are the earliest consistent with the routes. An exception thrown by the listener stops the
+     * search and is rethrown from {@link #solve()} wrapped in a {@link ModelException}; an
+     * {@link Error} is rethrown as is. The listener may call {@link #cancel()}.
+     *
+     * @throws ModelException if {@code onSolution} is null
+     */
+    public RoutingSolver onSolution(Consumer<RoutingPlan> onSolution) {
+        if (onSolution == null) throw new ModelException("onSolution listener must not be null.");
+        this.listener = onSolution;
+        return this;
+    }
+
+    /**
+     * Starts the search from the routes of a previous plan instead of a first-solution strategy.
+     * Vehicles and stops that no longer exist are ignored. If the previous routes are not
+     * feasible for this model, the search starts from scratch as usual.
+     *
+     * @throws ModelException if {@code previous} is null or not feasible
+     */
+    public RoutingSolver warmStart(RoutingPlan previous) {
+        if (previous == null) throw new ModelException("warmStart solution must not be null.");
+        if (!previous.isFeasible()) {
+            throw new ModelException("warmStart solution must be feasible, got status " + previous.status() + ".");
+        }
+        this.warmStart = previous;
+        return this;
+    }
+
+    /**
      * Solves the configured routing problem and returns the resulting {@link RoutingPlan}.
      *
      * @throws ModelException if this solver is already solving on another thread
@@ -77,6 +112,8 @@ public final class RoutingSolver implements Solver<RoutingPlan> {
                     .timeLimit(timeLimit)
                     .verbose(verbose)
                     .stopWhen(() -> cancelRequested)
+                    .onSolution(listener)
+                    .warmStart(warmStart)
                     .solve();
         } finally {
             cancelRequested = false;

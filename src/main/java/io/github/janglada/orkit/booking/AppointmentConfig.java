@@ -5,6 +5,8 @@ import io.github.janglada.orkit.internal.Validate;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Fluent configurator for a single appointment.
@@ -20,6 +22,7 @@ public final class AppointmentConfig {
 
     Duration duration;
     String[] resourceIds;
+    final List<List<String>> extraGroups = new ArrayList<>();
     LocalDateTime earliestDt;
     LocalDateTime latestDt;
     long penalty = 1L;
@@ -37,7 +40,12 @@ public final class AppointmentConfig {
         return this;
     }
 
-    /** Declares the candidate resources; the appointment will be booked on at most one of them. */
+    /**
+     * Declares the candidate resources for the appointment's main requirement: it is booked on
+     * exactly one of them when scheduled. Replaces any earlier call; use
+     * {@link #alsoRequiresAnyOf(String...)} or {@link #requiresAllOf(String...)} to add further
+     * requirements.
+     */
     public AppointmentConfig requiresAnyOf(String... ids) {
         if (ids == null || ids.length == 0) {
             throw new ModelException("requiresAnyOf() requires at least one resource id.");
@@ -46,6 +54,34 @@ public final class AppointmentConfig {
             Validate.nonBlank(id, "requiresAnyOf() resource id");
         }
         this.resourceIds = ids.clone();
+        return this;
+    }
+
+    /**
+     * Adds a further requirement: one of {@code ids} is booked at the same time as the main
+     * resource, for example a room alongside a doctor. Repeatable.
+     */
+    public AppointmentConfig alsoRequiresAnyOf(String... ids) {
+        if (ids == null || ids.length == 0) {
+            throw new ModelException("alsoRequiresAnyOf() requires at least one resource id.");
+        }
+        for (String id : ids) Validate.nonBlank(id, "alsoRequiresAnyOf() resource id");
+        extraGroups.add(List.of(ids));
+        return this;
+    }
+
+    /**
+     * Requires every one of {@code ids} at the same time, each as its own requirement (for
+     * example a surgeon, an anesthetist and an operating room). Repeatable.
+     */
+    public AppointmentConfig requiresAllOf(String... ids) {
+        if (ids == null || ids.length == 0) {
+            throw new ModelException("requiresAllOf() requires at least one resource id.");
+        }
+        for (String id : ids) {
+            Validate.nonBlank(id, "requiresAllOf() resource id");
+            extraGroups.add(List.of(id));
+        }
         return this;
     }
 
@@ -84,6 +120,14 @@ public final class AppointmentConfig {
 
     Duration duration()        { return duration; }
     String[] resourceIds()     { return resourceIds; }
+
+    /** Every requirement group: the main candidates first (if declared), then the extra groups. */
+    List<List<String>> groups() {
+        List<List<String>> out = new ArrayList<>();
+        if (resourceIds != null) out.add(List.of(resourceIds));
+        out.addAll(extraGroups);
+        return out;
+    }
     LocalDateTime earliestDt() { return earliestDt; }
     LocalDateTime latestDt()   { return latestDt; }
     long penalty()             { return penalty; }

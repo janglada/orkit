@@ -11,7 +11,9 @@ import java.util.Set;
  *  @param availableDays day-of-week pattern; empty means available every day
  *  @param maxHoursPerWeek weekly hour cap, or 0 for no cap
  *  @param preferredShifts shift ids this employee would prefer to work
- *  @param blockedDates specific calendar dates the employee cannot work */
+ *  @param blockedDates specific calendar dates the employee cannot work
+ *  @param minHoursPerWeek hard minimum hours in every full week from the horizon start, or 0
+ *  @param contractHoursPerWeek contracted hours per full week, or 0 for none */
 public record EmployeeDef(
         String id,
         Set<String> skills,
@@ -19,7 +21,9 @@ public record EmployeeDef(
         Set<DayOfWeek> availableDays,
         int maxHoursPerWeek,
         Set<String> preferredShifts,
-        Set<LocalDate> blockedDates
+        Set<LocalDate> blockedDates,
+        int minHoursPerWeek,
+        int contractHoursPerWeek
 ) {
     /** Returns false if the day-of-week is outside the employee's working days. */
     public boolean isAvailableOn(DayOfWeek day) {
@@ -35,8 +39,8 @@ public record EmployeeDef(
         return isAvailableOn(day);
     }
 
-    /** Returns true if the employee possesses the given skill, or if the shift requires no skill. */
-    public boolean hasSkill(String skill) {
-        return skill == null || skills.contains(skill);
+    /** Returns true if the employee possesses every given skill (always true for none). */
+    public boolean hasSkills(Set<String> required) {
+        return skills.containsAll(required);
     }
 }

@@ -38,8 +38,10 @@ public class BarcelonaDeliveryVrp {
                 .depot("Mercabarna", 41.3473, 2.1260)
 
                 // Fleet: 2 large vans + 2 small vans
-                .vehicle("LargeVan-1",  v -> v.capacity(25).maxDistanceMeters(60_000))
-                .vehicle("LargeVan-2",  v -> v.capacity(25).maxDistanceMeters(60_000))
+                .vehicle("LargeVan-1",  v -> v.capacity(25).maxDistanceMeters(60_000)
+                        .breakBetween(LocalTime.of(12, 0), LocalTime.of(14, 0), Duration.ofMinutes(30)))
+                .vehicle("LargeVan-2",  v -> v.capacity(25).maxDistanceMeters(60_000)
+                        .breakBetween(LocalTime.of(12, 0), LocalTime.of(14, 0), Duration.ofMinutes(30)))
                 .vehicle("SmallVan-1",  v -> v.capacity(15).maxDistanceMeters(50_000))
                 .vehicle("SmallVan-2",  v -> v.capacity(15).maxDistanceMeters(50_000))
 
@@ -124,6 +126,7 @@ public class BarcelonaDeliveryVrp {
                     r.vehicle().startsWith("Large") ? 25 : 15,
                     String.join(" → ", r.stops()),
                     r.distanceMeters() / 1000.0);
+            r.breaks().forEach(b -> System.out.printf("%-14s break %s–%s%n", "", b.start(), b.end()));
         }
 
         if (!plan.unassignedStops().isEmpty()) {

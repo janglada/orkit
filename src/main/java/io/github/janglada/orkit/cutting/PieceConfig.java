@@ -14,6 +14,7 @@ public final class PieceConfig {
     long length;
     int width = 0;
     int quantity = 1;
+    boolean rotatable = false;
 
     PieceConfig() {}
 
@@ -25,7 +26,7 @@ public final class PieceConfig {
     }
 
     /**
-     * Sets the width of one piece of this type, enabling the 2D (non-guillotine) cutting
+     * Sets the width of one piece of this type, enabling the 2D cutting
      * path. Must be {@code >= 1}. When left unset (or set to 0) the piece is treated as
      * 1D. If any stock or piece declares a width, then every stock and piece must declare
      * one — mixed 1D/2D models are rejected at solve time.
@@ -40,6 +41,15 @@ public final class PieceConfig {
     public PieceConfig quantity(int quantity) {
         if (quantity < 1) throw new ModelException("quantity() must be >= 1, got: " + quantity);
         this.quantity = quantity;
+        return this;
+    }
+
+    /**
+     * Lets a 2D piece be turned 90 degrees (length along the sheet's width). Rejected in 1D
+     * models and together with {@link CuttingBuilder#guillotine(boolean)}.
+     */
+    public PieceConfig rotatable(boolean rotatable) {
+        this.rotatable = rotatable;
         return this;
     }
 

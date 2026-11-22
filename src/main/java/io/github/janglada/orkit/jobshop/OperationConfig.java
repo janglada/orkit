@@ -3,6 +3,8 @@ package io.github.janglada.orkit.jobshop;
 import io.github.janglada.orkit.ModelException;
 import io.github.janglada.orkit.internal.Validate;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -64,6 +66,32 @@ public final class OperationConfig {
         if (durationUnits < 1) throw new ModelException("takes() must be >= 1, got: " + durationUnits);
         this.duration = durationUnits;
         return this;
+    }
+
+    /**
+     * Sets the processing duration as a {@link Duration}, converted with the builder's
+     * {@link JobShopBuilder#timeUnit(Duration) time unit}. Requires
+     * {@link JobShopBuilder#startingAt(LocalDateTime)}; the duration must be a whole number of units.
+     */
+    public OperationConfig takes(Duration duration) {
+        long units = job.grid("takes(Duration)").units(duration, "takes()");
+        if (units > Integer.MAX_VALUE) throw new ModelException("takes() " + duration + " is too many time units.");
+        return takes((int) units);
+    }
+
+    /** Release date as a wall-clock time; see {@link #releaseAt(long)} and {@link JobShopBuilder#startingAt(LocalDateTime)}. */
+    public OperationConfig releaseAt(LocalDateTime time) {
+        return releaseAt(job.grid("releaseAt(LocalDateTime)").units(time, "releaseAt()"));
+    }
+
+    /** Hard deadline as a wall-clock time; see {@link #deadlineAt(long)} and {@link JobShopBuilder#startingAt(LocalDateTime)}. */
+    public OperationConfig deadlineAt(LocalDateTime time) {
+        return deadlineAt(job.grid("deadlineAt(LocalDateTime)").units(time, "deadlineAt()"));
+    }
+
+    /** Soft due date as a wall-clock time; see {@link #dueBy(long)} and {@link JobShopBuilder#startingAt(LocalDateTime)}. */
+    public OperationConfig dueBy(LocalDateTime time) {
+        return dueBy(job.grid("dueBy(LocalDateTime)").units(time, "dueBy()"));
     }
 
     /**

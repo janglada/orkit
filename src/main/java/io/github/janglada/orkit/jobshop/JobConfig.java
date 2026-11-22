@@ -17,8 +17,19 @@ public final class JobConfig {
     OperationConfig activeOp;
     long weight = 1;
     Long defaultMaxLag;
+    final TimeGrid grid;
 
-    JobConfig() {}
+    JobConfig(TimeGrid grid) {
+        this.grid = grid;
+    }
+
+    /** The calendar of the builder, or a {@link ModelException} when none was declared. */
+    TimeGrid grid(String what) {
+        if (grid == null) {
+            throw new ModelException(what + " needs a calendar: call JobShopBuilder.startingAt(...) before declaring jobs.");
+        }
+        return grid;
+    }
 
     /**
      * Sets this job's relative importance (default 1). Multiplies the job's tardiness terms

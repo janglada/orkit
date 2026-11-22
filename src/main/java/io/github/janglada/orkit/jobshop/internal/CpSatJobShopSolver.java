@@ -3,6 +3,7 @@ package io.github.janglada.orkit.jobshop.internal;
 import com.google.ortools.sat.*;
 import io.github.janglada.orkit.ModelException;
 import io.github.janglada.orkit.SolveStatus;
+import io.github.janglada.orkit.internal.ConstraintGroups;
 import io.github.janglada.orkit.internal.CpSatParams;
 import io.github.janglada.orkit.internal.Validate;
 import java.util.function.Consumer;
@@ -11,6 +12,7 @@ import io.github.janglada.orkit.jobshop.JobShopSchedule;
 import io.github.janglada.orkit.jobshop.ScheduledOperation;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 
 /** Compiles a job shop model into CP-SAT and solves it, with optional sequence-dependent setup times. */
@@ -21,6 +23,10 @@ public final class CpSatJobShopSolver {
     private final SetupMatrix setupMatrix;
     private final JobShopGoal goal;
     private final List<DowntimeDef> downtimes;
+    private final Map<String, Integer> capacities;
+    private final List<PrecedenceDef> precedences;
+    private final LocalDateTime origin;
+    private final Duration timeUnit;
     private final CpSatParams params;
     private final Consumer<JobShopSchedule> listener;
     private final JobShopSchedule warmStart;
@@ -41,13 +47,18 @@ public final class CpSatJobShopSolver {
 
     /** Creates a solver for the given machines, jobs, setup matrix, and objective. Internal; obtain via {@link io.github.janglada.orkit.jobshop.JobShopBuilder#solver()}. */
     public CpSatJobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal,
-                              List<DowntimeDef> downtimes,
+                              List<DowntimeDef> downtimes, Map<String, Integer> capacities,
+                              List<PrecedenceDef> precedences, LocalDateTime origin, Duration timeUnit,
                               CpSatParams params, Consumer<JobShopSchedule> listener, JobShopSchedule warmStart) {
         this.machines = List.copyOf(machines);
         this.jobs = List.copyOf(jobs);
         this.setupMatrix = (setupMatrix == null) ? SetupMatrix.empty() : setupMatrix;
         this.goal = (goal == null) ? new JobShopGoal.MinimizeMakespan() : goal;
         this.downtimes = (downtimes == null) ? List.of() : List.copyOf(downtimes);
+        this.capacities = (capacities == null) ? Map.of() : Map.copyOf(capacities);
+        this.precedences = (precedences == null) ? List.of() : List.copyOf(precedences);
+        this.origin = origin;
+        this.timeUnit = timeUnit;
         this.params = (params == null) ? new CpSatParams() : params;
         this.listener = listener;
         this.warmStart = warmStart;
@@ -94,6 +105,7 @@ public final class CpSatJobShopSolver {
                 maxDowntimeEnd, "Scheduling horizon"), maxDeadline);
 
         CpModel model = new CpModel();
+        ConstraintGroups groups = params.groups(model);
 
         List<List<OpIntervals>> allIntervals = new ArrayList<>();
         // Tardiness variables for operations carrying a soft due date, with their job's weight
@@ -107,11 +119,20 @@ public final class CpSatJobShopSolver {
                 // booking trick) — release bounds start below, deadline bounds end
                 // above. Flexible ops share the same start/end across candidates,
                 // so the window applies without presence gating.
-                long startLb = (op.releaseTime() != null) ? op.releaseTime() : 0L;
-                long endUb   = (op.deadline()   != null) ? op.deadline()   : horizon;
+                // When explaining infeasibility, the window becomes labeled constraints instead.
+                boolean labeled = groups.active();
+                long startLb = (op.releaseTime() != null && !labeled) ? op.releaseTime() : 0L;
+                long endUb   = (op.deadline()   != null && !labeled) ? op.deadline()   : horizon;
                 long startUb = Math.max(startLb, endUb - op.duration());
                 IntVar start = model.newIntVar(startLb, startUb, "s_" + job.id() + "_" + op.index());
                 IntVar end   = model.newIntVar(0, endUb, "e_" + job.id() + "_" + op.index());
+                String opName = "operation " + op.index() + " of job '" + job.id() + "'";
+                if (labeled && op.releaseTime() != null) {
+                    groups.guard(model.addGreaterOrEqual(start, op.releaseTime()), "release " + op.releaseTime() + " of " + opName);
+                }
+                if (labeled && op.deadline() != null) {
+                    groups.guard(model.addLessOrEqual(end, op.deadline()), "deadline " + op.deadline() + " of " + opName);
+                }
 
                 IntVar tardiness = null;
                 if (op.dueTime() != null) {
@@ -151,15 +172,28 @@ public final class CpSatJobShopSolver {
             List<OpIntervals> jobOps = allIntervals.get(j);
             List<OperationDef> ops = jobs.get(j).operations();
             for (int o = 0; o < jobOps.size() - 1; o++) {
-                model.addLessOrEqual(jobOps.get(o).end(), jobOps.get(o + 1).start());
+                groups.guard(model.addLessOrEqual(jobOps.get(o).end(), jobOps.get(o + 1).start()),
+                        "operation order of job '" + jobs.get(j).id() + "'");
                 Long lag = ops.get(o + 1).maxLagAfterPrevious();
                 if (lag != null) {
-                    model.addLessOrEqual(jobOps.get(o + 1).start(), LinearExpr.affine(jobOps.get(o).end(), 1, lag));
+                    groups.guard(model.addLessOrEqual(jobOps.get(o + 1).start(), LinearExpr.affine(jobOps.get(o).end(), 1, lag)),
+                            "max lag " + lag + " before operation " + (o + 1) + " of job '" + jobs.get(j).id() + "'");
                 }
             }
         }
 
-        // Machine downtime: fixed intervals no operation may overlap.
+        // Precedences across jobs: the earlier operation ends before the later one starts.
+        Map<String, Integer> jobIndex = new HashMap<>();
+        for (int j = 0; j < jobs.size(); j++) jobIndex.put(jobs.get(j).id(), j);
+        for (PrecedenceDef p : precedences) {
+            OpIntervals before = allIntervals.get(jobIndex.get(p.beforeJob())).get(p.beforeOp());
+            OpIntervals after = allIntervals.get(jobIndex.get(p.afterJob())).get(p.afterOp());
+            groups.guard(model.addLessOrEqual(before.end(), after.start()),
+                    "precedence: operation " + p.beforeOp() + " of '" + p.beforeJob() + "' before operation "
+                            + p.afterOp() + " of '" + p.afterJob() + "'");
+        }
+
+                // Machine downtime: fixed intervals no operation may overlap.
         Map<String, List<IntervalVar>> downtimeIntervals = new LinkedHashMap<>();
         for (DowntimeDef d : downtimes) {
             downtimeIntervals.computeIfAbsent(d.machine(), k -> new ArrayList<>())
@@ -185,7 +219,14 @@ public final class CpSatJobShopSolver {
             if (slots.isEmpty()) continue;
 
             List<IntervalVar> down = downtimeIntervals.getOrDefault(machine, List.of());
-            if (setupMatrix.isEmpty() || !machineHasSetup(machine, slots)) {
+            int capacity = capacities.getOrDefault(machine, 1);
+            if (capacity > 1) {
+                if (!setupMatrix.isEmpty() && machineHasSetup(machine, slots)) {
+                    throw new ModelException("Machine '" + machine + "' has capacity " + capacity
+                            + "; sequence-dependent setup times need a machine with capacity 1.");
+                }
+                addCumulative(model, machine, slots, allIntervals, down, capacity);
+            } else if (setupMatrix.isEmpty() || !machineHasSetup(machine, slots)) {
                 addNoOverlap(model, machine, slots, allIntervals, down);
             } else {
                 addSetupCircuit(model, machine, slots, allIntervals);
@@ -230,7 +271,7 @@ public final class CpSatJobShopSolver {
 
         if (warmStart != null) applyWarmStart(model, allIntervals);
 
-        CpSatParams.Extractor<JobShopSchedule> extract = (v, status, runtime) -> {
+        CpSatParams.Extractor<JobShopSchedule> extract = (v, status, runtime, diag) -> {
             long makespanValue = 0;
             List<ScheduledOperation> operations = new ArrayList<>();
             Map<String, Long> tardinessByJob = new LinkedHashMap<>();
@@ -255,7 +296,8 @@ public final class CpSatJobShopSolver {
                         } else {
                             assignedMachine = op.machine();
                         }
-                        operations.add(new ScheduledOperation(job.id(), o, assignedMachine, start, end));
+                        operations.add(new ScheduledOperation(job.id(), o, assignedMachine, start, end,
+                                wallClock(start), wallClock(end)));
                         if (op.dueTime() != null) {
                             tardinessByJob.merge(job.id(), Math.max(0, end - op.dueTime()), Long::sum);
                         }
@@ -267,7 +309,8 @@ public final class CpSatJobShopSolver {
                     ? OptionalDouble.of(v.objectiveValue())
                     : OptionalDouble.empty();
 
-            return new JobShopSchedule(status, objValue, runtime, makespanValue, machines, operations, tardinessByJob);
+            return new JobShopSchedule(status, objValue, runtime, makespanValue, machines, operations, tardinessByJob,
+                    diag, timeUnit);
         };
         return params.solve(model, extract, listener);
     }
@@ -290,6 +333,11 @@ public final class CpSatJobShopSolver {
         }
     }
 
+    /** Wall-clock time of a model time, or null without a calendar. */
+    private LocalDateTime wallClock(long units) {
+        return origin == null ? null : origin.plus(timeUnit.multipliedBy(units));
+    }
+
     /** A tardiness variable paired with its job's weight. */
     private record WeightedTerm(IntVar var, long weight) {}
 
@@ -309,7 +357,19 @@ public final class CpSatJobShopSolver {
         model.addNoOverlap(machineIntervals.toArray(new IntervalVar[0]));
     }
 
-    /** {@code true} if any resolved setup on this machine (incl. initial state) is nonzero. */
+    /** Up to {@code capacity} operations at once on this machine; a downtime window takes the whole capacity. */
+    private void addCumulative(CpModel model, String machine, List<int[]> slots,
+                               List<List<OpIntervals>> allIntervals, List<IntervalVar> downtime, int capacity) {
+        CumulativeConstraint cumulative = model.addCumulative(capacity);
+        for (IntervalVar d : downtime) cumulative.addDemand(d, capacity);
+        for (int[] slot : slots) {
+            OperationDef op = jobs.get(slot[0]).operations().get(slot[1]);
+            OpIntervals iv = allIntervals.get(slot[0]).get(slot[1]);
+            cumulative.addDemand(op.isFlexible() ? iv.optionals().get(machine) : iv.interval(), 1);
+        }
+    }
+
+        /** {@code true} if any resolved setup on this machine (incl. initial state) is nonzero. */
     private boolean machineHasSetup(String machine, List<int[]> slots) {
         String initial = setupMatrix.initialType(machine);
         for (int a = 0; a < slots.size(); a++) {

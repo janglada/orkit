@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/** Fluent builder for cutting-stock problems (1D or 2D non-guillotine). Entry point: {@code Optimize.cuttingStock()}. */
+/** Fluent builder for cutting-stock problems (1D, or 2D free or guillotine). Entry point: {@code Optimize.cuttingStock()}. */
 public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
 
     private final List<StockConfig> rawStocks = new ArrayList<>();
@@ -24,6 +24,8 @@ public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
     private final Set<String> pieceIds = new HashSet<>();
     private CuttingGoal goal = Goals.minimizeWaste();
     private long droppingPenalty = 0;
+    private long kerf = 0;
+    private boolean guillotine = false;
 
     /** Declares a stock roll type with the given unique id and configures it via the {@link StockConfig} lambda. */
     public CuttingBuilder stock(String id, Consumer<StockConfig> config) {
@@ -75,6 +77,32 @@ public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
         return this;
     }
 
+    /**
+     * Sets the blade width lost at every cut; default 0. Pieces on one roll are separated by
+     * {@code kerf} (and, in 2D, along both axes), while a piece may touch the stock edge. The
+     * lost material counts as waste.
+     *
+     * @throws ModelException if {@code kerf} is negative
+     */
+    public CuttingBuilder kerf(long kerf) {
+        Validate.nonNegative(kerf, "kerf");
+        this.kerf = kerf;
+        return this;
+    }
+
+    /**
+     * Restricts 2D layouts to guillotine cuts using the two-stage shelf form: each sheet is
+     * cut across its width into shelves, each shelf as tall as its widest piece, and each shelf
+     * is cut along its length into pieces (with a trim cut where a piece is narrower than its
+     * shelf). Every such layout can be produced by edge-to-edge cuts. Free-form multi-stage
+     * guillotine patterns are not modeled, and rotatable pieces are rejected. Ignored in 1D,
+     * where every layout is guillotine.
+     */
+    public CuttingBuilder guillotine(boolean guillotine) {
+        this.guillotine = guillotine;
+        return this;
+    }
+
     /** Builds an immutable, reusable problem instance with quantity expansion applied. */
     public CpSatProblem<CuttingSolution> build() {
         if (rawStocks.isEmpty()) {
@@ -89,18 +117,26 @@ public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
         List<StockDef> stockDefs = new ArrayList<>();
         for (StockConfig sc : rawStocks) {
             for (int q = 1; q <= sc.quantity(); q++) {
-                stockDefs.add(new StockDef(sc.id() + "#" + q, sc.length(), sc.width(), sc.cost()));
+                stockDefs.add(new StockDef(sc.id() + "#" + q, sc.id(), sc.length(), sc.width(), sc.cost()));
             }
         }
 
         List<PieceDef> pieceDefs = new ArrayList<>();
         for (PieceConfig pc : rawPieces) {
-            for (int q = 1; q <= pc.quantity(); q++) {
-                pieceDefs.add(new PieceDef(pc.id() + "#" + q, pc.length(), pc.width()));
+            pieceDefs.add(new PieceDef(pc.id(), pc.length(), pc.width(), pc.quantity(), pc.rotatable));
+        }
+        boolean is2D = rawStocks.stream().anyMatch(sc -> sc.width() > 0) || rawPieces.stream().anyMatch(pc -> pc.width() > 0);
+        for (PieceConfig pc : rawPieces) {
+            if (pc.rotatable && !is2D) {
+                throw new ModelException("Piece '" + pc.id() + "' is rotatable, but rotation needs a 2D model (declare widths).");
+            }
+            if (pc.rotatable && guillotine) {
+                throw new ModelException("Piece '" + pc.id() + "' is rotatable; guillotine(true) does not support rotation.");
             }
         }
 
-        return new CuttingProblem(List.copyOf(stockDefs), List.copyOf(pieceDefs), goal, droppingPenalty);
+        Spec spec = new Spec(List.copyOf(stockDefs), List.copyOf(pieceDefs), goal, droppingPenalty, kerf, guillotine && is2D);
+        return new CuttingProblem(spec);
     }
 
     /** Convenience: calls {@code build().solver()} for the single-solve case. */
@@ -111,43 +147,36 @@ public final class CuttingBuilder implements CpSatProblem<CuttingSolution> {
 
     // ── Problem + Solver ────────────────────────────────────────────────────
 
+    /** Everything a solve needs; immutable. */
+    private record Spec(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal, long droppingPenalty,
+                        long kerf, boolean guillotine) {}
+
     private static final class CuttingProblem implements CpSatProblem<CuttingSolution> {
 
-        private final List<StockDef> stocks;
-        private final List<PieceDef> pieces;
-        private final CuttingGoal goal;
-        private final long droppingPenalty;
+        private final Spec spec;
 
-        CuttingProblem(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal, long droppingPenalty) {
-            this.stocks = stocks;
-            this.pieces = pieces;
-            this.goal = goal;
-            this.droppingPenalty = droppingPenalty;
+        CuttingProblem(Spec spec) {
+            this.spec = spec;
         }
 
         @Override
         public CpSatSolver<CuttingSolution> solver() {
-            return new CuttingSolver(stocks, pieces, goal, droppingPenalty);
+            return new CuttingSolver(spec);
         }
     }
 
     private static final class CuttingSolver extends AbstractCpSatSolver<CuttingSolution> {
 
-        private final List<StockDef> stocks;
-        private final List<PieceDef> pieces;
-        private final CuttingGoal goal;
-        private final long droppingPenalty;
+        private final Spec spec;
 
-        CuttingSolver(List<StockDef> stocks, List<PieceDef> pieces, CuttingGoal goal, long droppingPenalty) {
-            this.stocks = stocks;
-            this.pieces = pieces;
-            this.goal = goal;
-            this.droppingPenalty = droppingPenalty;
+        CuttingSolver(Spec spec) {
+            this.spec = spec;
         }
 
         @Override
         protected CuttingSolution doSolve() {
-            return new CpSatCuttingSolver(stocks, pieces, goal, droppingPenalty, params, listener, warmStart).solve();
+            return new CpSatCuttingSolver(spec.stocks(), spec.pieces(), spec.goal(), spec.droppingPenalty(),
+                    spec.kerf(), spec.guillotine(), params, listener, warmStart).solve();
         }
     }
 }

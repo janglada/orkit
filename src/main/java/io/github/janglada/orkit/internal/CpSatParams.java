@@ -7,9 +7,13 @@ import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.SatParameters;
 import io.github.janglada.orkit.ModelException;
 import io.github.janglada.orkit.Solution;
+import io.github.janglada.orkit.SolveDiagnostics;
 import io.github.janglada.orkit.SolveStatus;
 
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
+import java.util.OptionalDouble;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -33,6 +37,10 @@ public final class CpSatParams {
     private int workers = DEFAULT_WORKERS;
     private int seed = 0;
     private boolean verbose = false;
+    private Path exportPath;
+    private boolean explainInfeasibility;
+    private boolean explaining;
+    private ConstraintGroups groups = ConstraintGroups.off();
     private final AtomicReference<CpSolver> active = new AtomicReference<>();
     private final AtomicBoolean inSession = new AtomicBoolean();
     private volatile boolean cancelRequested;
@@ -49,8 +57,9 @@ public final class CpSatParams {
          * @param values  solved variable values
          * @param status  {@link SolveStatus#FEASIBLE} for intermediate solutions, the mapped final status otherwise
          * @param runtime wall-clock time elapsed since the solve started
+         * @param diagnostics search statistics for this solution
          */
-        S extract(CpValues values, SolveStatus status, Duration runtime);
+        S extract(CpValues values, SolveStatus status, Duration runtime, SolveDiagnostics diagnostics);
     }
 
     /** Sets the time limit; rejects null, zero, and negative durations. */
@@ -77,6 +86,41 @@ public final class CpSatParams {
     public CpSatParams verbose(boolean v) {
         this.verbose = v;
         return this;
+    }
+
+    /**
+     * Writes the built model to {@code file} before each search: text format when the name
+     * ends in {@code .txt} or {@code .textproto}, binary protobuf otherwise.
+     */
+    public CpSatParams exportModel(Path file) {
+        if (file == null) throw new ModelException("exportModel path must not be null.");
+        this.exportPath = file;
+        return this;
+    }
+
+    /** Requests a second, explaining solve when the first one proves the model infeasible. */
+    public CpSatParams explainInfeasibility(boolean explain) {
+        this.explainInfeasibility = explain;
+        return this;
+    }
+
+    /** Whether an explaining solve was requested. */
+    public boolean explainInfeasibilityRequested() {
+        return explainInfeasibility;
+    }
+
+    /** Switches the explaining mode used by the next model built through {@link #groups(CpModel)}. */
+    public void explaining(boolean on) {
+        this.explaining = on;
+    }
+
+    /**
+     * The constraint groups for a model about to be built: active while explaining, inactive
+     * otherwise. Domain solvers guard the constraints worth naming through them.
+     */
+    public ConstraintGroups groups(CpModel model) {
+        groups = explaining ? ConstraintGroups.on(model) : ConstraintGroups.off();
+        return groups;
     }
 
     /**
@@ -123,10 +167,18 @@ public final class CpSatParams {
         p.setNumWorkers(workers);
         p.setRandomSeed(seed);
         p.setLogSearchProgress(verbose);
+        boolean explain = groups.active() && groups.isFor(model);
+        if (explain) {
+            // Cores of failed assumptions are reported by the single-worker search.
+            groups.assumeAll();
+            p.setNumWorkers(1);
+        }
+        if (exportPath != null) export(model);
+        boolean hasObjective = model.getBuilder().hasObjective();
 
-        long startMs = System.currentTimeMillis();
+        long startNs = System.nanoTime();
         ListenerCallback<S> callback = (listener == null) ? null
-                : new ListenerCallback<>(extractor, listener, startMs);
+                : new ListenerCallback<>(extractor, listener, startNs, hasObjective);
 
         CpSolverStatus cpStatus;
         active.set(solver);
@@ -143,8 +195,39 @@ public final class CpSatParams {
             if (callback.failure instanceof Error e) throw e;
             throw new ModelException("onSolution listener threw an exception; search was stopped.", callback.failure);
         }
-        Duration runtime = Duration.ofMillis(System.currentTimeMillis() - startMs);
-        return extractor.extract(CpValues.of(solver), mapStatus(cpStatus), runtime);
+        Duration runtime = Duration.ofNanos(System.nanoTime() - startNs);
+        SolveStatus status = mapStatus(cpStatus);
+        CpValues values = CpValues.of(solver);
+        SolveDiagnostics diag = diagnostics(values, status, hasObjective);
+        if (explain && status == SolveStatus.INFEASIBLE) {
+            diag = diag.withInfeasibilityReasons(groups.labels(solver.sufficientAssumptionsForInfeasibility()));
+        }
+        return extractor.extract(values, status, runtime, diag);
+    }
+
+    /** Validates {@code model} and writes it to the export path. */
+    private void export(CpModel model) {
+        String problem = model.validate();
+        if (problem != null && !problem.isEmpty()) {
+            throw new ModelException("The built CP-SAT model is invalid: " + problem);
+        }
+        if (!Boolean.TRUE.equals(model.exportToFile(exportPath.toString()))) {
+            throw new ModelException("Could not write the model to '" + exportPath + "'.");
+        }
+    }
+
+    /**
+     * Builds the diagnostics for a result: the bound is reported only for a model with an
+     * objective and a solution, and only when finite.
+     */
+    static SolveDiagnostics diagnostics(CpValues values, SolveStatus status, boolean hasObjective) {
+        boolean solved = status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE;
+        OptionalDouble bound = OptionalDouble.empty();
+        if (hasObjective && solved) {
+            double b = values.bestObjectiveBound();
+            if (Double.isFinite(b)) bound = OptionalDouble.of(b);
+        }
+        return new SolveDiagnostics(bound, values.numBranches(), values.numConflicts(), List.of());
     }
 
     /** Maps a CP-SAT status to the public {@link SolveStatus}. */
@@ -162,21 +245,25 @@ public final class CpSatParams {
     private static final class ListenerCallback<S extends Solution> extends CpSolverSolutionCallback {
         private final Extractor<S> extractor;
         private final Consumer<S> listener;
-        private final long startMs;
+        private final long startNs;
+        private final boolean hasObjective;
         volatile Throwable failure;
 
-        ListenerCallback(Extractor<S> extractor, Consumer<S> listener, long startMs) {
+        ListenerCallback(Extractor<S> extractor, Consumer<S> listener, long startNs, boolean hasObjective) {
             this.extractor = extractor;
             this.listener = listener;
-            this.startMs = startMs;
+            this.startNs = startNs;
+            this.hasObjective = hasObjective;
         }
 
         @Override
         public void onSolutionCallback() {
             if (failure != null) return;
             try {
-                Duration elapsed = Duration.ofMillis(System.currentTimeMillis() - startMs);
-                listener.accept(extractor.extract(CpValues.of(this), SolveStatus.FEASIBLE, elapsed));
+                Duration elapsed = Duration.ofNanos(System.nanoTime() - startNs);
+                CpValues values = CpValues.of(this);
+                listener.accept(extractor.extract(values, SolveStatus.FEASIBLE, elapsed,
+                        diagnostics(values, SolveStatus.FEASIBLE, hasObjective)));
             } catch (Throwable t) {
                 failure = t;
                 stopSearch();

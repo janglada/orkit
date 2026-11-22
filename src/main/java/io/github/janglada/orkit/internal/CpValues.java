@@ -21,12 +21,24 @@ public interface CpValues {
     /** Objective value of the current solution. */
     double objectiveValue();
 
+    /** Best objective bound proven so far. */
+    double bestObjectiveBound();
+
+    /** Search branches explored so far. */
+    long numBranches();
+
+    /** Conflicts encountered so far. */
+    long numConflicts();
+
     /** Values read from a finished solver. */
     static CpValues of(CpSolver solver) {
         return new CpValues() {
             @Override public long value(LinearArgument expr)      { return solver.value(expr); }
             @Override public boolean booleanValue(Literal literal) { return solver.booleanValue(literal); }
             @Override public double objectiveValue()               { return solver.objectiveValue(); }
+            @Override public double bestObjectiveBound()           { return solver.bestObjectiveBound(); }
+            @Override public long numBranches()                    { return solver.numBranches(); }
+            @Override public long numConflicts()                   { return solver.numConflicts(); }
         };
     }
 
@@ -36,6 +48,9 @@ public interface CpValues {
             @Override public long value(LinearArgument expr)      { return callback.value(expr); }
             @Override public boolean booleanValue(Literal literal) { return callback.booleanValue(literal); }
             @Override public double objectiveValue()               { return callback.objectiveValue(); }
+            @Override public double bestObjectiveBound()           { return callback.bestObjectiveBound(); }
+            @Override public long numBranches()                    { return callback.numBranches(); }
+            @Override public long numConflicts()                   { return callback.numConflicts(); }
         };
     }
 }

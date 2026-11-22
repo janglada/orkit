@@ -5,7 +5,7 @@ import io.github.janglada.orkit.ModelException;
 /** Soft preference folded into the weighted objective. Create instances via {@link Goals}. */
 public sealed interface SoftGoal
         permits SoftGoal.BalanceWorkloadAcrossEmployees, SoftGoal.HonorEmployeePreferences,
-                SoftGoal.PenalizeUnderstaffing {
+                SoftGoal.PenalizeUnderstaffing, SoftGoal.PenalizeContractDeviation {
 
     /** Default penalty per minute of workload imbalance (in objective units). */
     long DEFAULT_BALANCE_WEIGHT = 10L;
@@ -13,6 +13,8 @@ public sealed interface SoftGoal
     long DEFAULT_PREFERENCE_WEIGHT = 5L;
     /** Default penalty per missing employee on a soft-staffed shift (in objective units). */
     long DEFAULT_UNDERSTAFFING_WEIGHT = 100L;
+    /** Default penalty per minute of deviation from contracted weekly hours (in objective units). */
+    long DEFAULT_CONTRACT_DEVIATION_WEIGHT = 1L;
 
     /**
      * Penalize the spread between the most- and least-loaded employee.
@@ -45,6 +47,18 @@ public sealed interface SoftGoal
         public PenalizeUnderstaffing() { this(DEFAULT_UNDERSTAFFING_WEIGHT); }
         public PenalizeUnderstaffing {
             if (weight <= 0) throw new ModelException("understaffing weight must be > 0, got: " + weight);
+        }
+    }
+
+    /**
+     * Penalize every minute an employee works above or below their
+     * {@link EmployeeConfig#contractHoursPerWeek(int) contracted hours} in a full week.
+     * @param weight penalty per minute of deviation; must be > 0
+     */
+    record PenalizeContractDeviation(long weight) implements SoftGoal {
+        public PenalizeContractDeviation() { this(DEFAULT_CONTRACT_DEVIATION_WEIGHT); }
+        public PenalizeContractDeviation {
+            if (weight <= 0) throw new ModelException("contract deviation weight must be > 0, got: " + weight);
         }
     }
 }

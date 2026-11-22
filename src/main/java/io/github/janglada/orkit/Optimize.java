@@ -51,7 +51,7 @@ public final class Optimize {
         return new BookingBuilder();
     }
 
-    /** Creates a builder for cutting stock problems (1D rolls or 2D non-guillotine sheets). */
+    /** Creates a builder for cutting stock problems (1D rolls, or 2D sheets with free or guillotine layouts). */
     public static CuttingBuilder cuttingStock() {
         return new CuttingBuilder();
     }

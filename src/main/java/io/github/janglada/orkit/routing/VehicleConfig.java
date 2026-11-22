@@ -5,8 +5,14 @@ import io.github.janglada.orkit.internal.Validate;
 
 import java.time.Duration;
 import java.time.LocalTime;
+import io.github.janglada.orkit.routing.internal.BreakDef;
+
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Fluent configurator for a vehicle, used inside the lambda passed to
@@ -14,7 +20,7 @@ import java.util.Set;
 public final class VehicleConfig {
 
     String id;
-    int capacity = Integer.MAX_VALUE;
+    final Map<String, Long> capacities = new LinkedHashMap<>();
     long maxDistanceMeters = 0;
     String startDepotId;
     String endDepotId;
@@ -25,13 +31,29 @@ public final class VehicleConfig {
     long maxRouteDurationMin = 0;
     long fixedCost = 0;
     final Set<String> skills = new LinkedHashSet<>();
+    final List<BreakDef> breaks = new ArrayList<>();
+    long costPerMeter = 1;
+    long costPerMinute = 0;
 
     VehicleConfig() {}
 
-    /** Sets the vehicle's carrying capacity in arbitrary demand units; default unlimited. */
-    public VehicleConfig capacity(int units) {
+    /**
+     * Sets the vehicle's carrying capacity in the default {@value RoutingBuilder#DEFAULT_DIMENSION}
+     * dimension, in the units of {@link StopConfig#demand(long)}; default unlimited.
+     */
+    public VehicleConfig capacity(long units) {
+        return capacity(RoutingBuilder.DEFAULT_DIMENSION, units);
+    }
+
+    /**
+     * Sets the vehicle's capacity in a named dimension (for example {@code "kg"} or
+     * {@code "pallets"}), matched against {@link StopConfig#demand(String, long)}. A dimension
+     * this vehicle does not declare is unbounded for it.
+     */
+    public VehicleConfig capacity(String dimension, long units) {
+        Validate.nonBlank(dimension, "capacity dimension");
         if (units < 1) throw new ModelException("capacity must be >= 1, got: " + units);
-        this.capacity = units;
+        this.capacities.put(dimension, units);
         return this;
     }
 
@@ -117,6 +139,50 @@ public final class VehicleConfig {
     public VehicleConfig skills(String... skills) {
         for (String s : skills) Validate.nonBlank(s, "vehicle skill");
         this.skills.addAll(Arrays.asList(skills));
+        return this;
+    }
+
+    /**
+     * Requires a driver break of {@code duration} starting no earlier than {@code earliest} and
+     * ending no later than {@code latest}. The break may interrupt a drive between two stops
+     * (never a service), or fall before the route starts or after it ends. Repeatable; turns the
+     * time dimension on.
+     *
+     * @throws ModelException if an argument is null, the duration is not positive, or the
+     *                        break does not fit between {@code earliest} and {@code latest}
+     */
+    public VehicleConfig breakBetween(LocalTime earliest, LocalTime latest, Duration duration) {
+        if (earliest == null || latest == null || duration == null) {
+            throw new ModelException("breakBetween arguments must not be null.");
+        }
+        Validate.positive(duration.toMinutes(), "break duration minutes");
+        int from = earliest.toSecondOfDay() / 60;
+        int until = latest.toSecondOfDay() / 60;
+        int length = (int) duration.toMinutes();
+        if (from + length > until) {
+            throw new ModelException("Break of " + length + " min does not fit between " + earliest + " and " + latest + ".");
+        }
+        breaks.add(new BreakDef(from, until - length, length));
+        return this;
+    }
+
+    /**
+     * Cost per meter driven under {@link Goals#totalCost()}; default 1, so meters and cost
+     * coincide unless set. Other goals measure plain meters.
+     */
+    public VehicleConfig costPerMeter(long cost) {
+        Validate.nonNegative(cost, "costPerMeter");
+        this.costPerMeter = cost;
+        return this;
+    }
+
+    /**
+     * Cost per minute of route duration (start-depot departure to end-depot arrival, waiting
+     * included) under {@link Goals#totalCost()}; default 0. Turns the time dimension on.
+     */
+    public VehicleConfig costPerMinute(long cost) {
+        Validate.nonNegative(cost, "costPerMinute");
+        this.costPerMinute = cost;
         return this;
     }
 

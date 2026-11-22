@@ -83,10 +83,10 @@ public final class PackingBuilder implements CpSatProblem<PackingSolution> {
     }
 
     /**
-     * Toggles the vertical support-footprint constraint. When enabled, every box that
-     * rests on top of another must have its XY footprint fully contained within the
-     * supporting box below it (no floating boxes). Disabled by default, which preserves
-     * the classical no-overlap-only packing model.
+     * Toggles physical support. When enabled, every packed box stands on the container floor
+     * or rests directly on one other box: its bottom touches that box's top and its XY
+     * footprint lies inside that box's footprint, so no box hovers. Disabled by default,
+     * which keeps the classical no-overlap-only model where boxes may float.
      */
     public PackingBuilder requireSupport(boolean requireSupport) {
         this.requireSupport = requireSupport;

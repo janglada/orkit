@@ -6,7 +6,9 @@ import io.github.janglada.orkit.internal.Validate;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 /** Fluent configurator for a stop, used inside the lambda passed to
@@ -16,7 +18,7 @@ public final class StopConfig {
     String id;
     double lat;
     double lon;
-    int demand = 0;
+    final Map<String, Long> demands = new LinkedHashMap<>();
     int serviceTimeMin = 0;
     int openMin = 0;
     int closeMin = 24 * 60;
@@ -24,6 +26,8 @@ public final class StopConfig {
     boolean openSet = false;
     boolean closeSet = false;
     long dropPenalty = 0;
+    int lateAfterMin = -1;
+    long latePenaltyPerMin = 0;
     final Set<String> requiredSkills = new LinkedHashSet<>();
 
     StopConfig() {}
@@ -38,13 +42,25 @@ public final class StopConfig {
     }
 
     /**
-     * Sets the demand picked up or delivered at this stop, in the same units as vehicle capacity.
-     * For the delivery stop of a {@link RoutingBuilder#pickupAndDelivery(String, String) pair},
-     * leave it unset (or equal to the pickup's demand); the load is subtracted on delivery.
+     * Sets the demand picked up or delivered at this stop in the default
+     * {@value RoutingBuilder#DEFAULT_DIMENSION} dimension, in the same units as
+     * {@link VehicleConfig#capacity(long)}. For the delivery stop of a
+     * {@link RoutingBuilder#pickupAndDelivery(String, String) pair}, leave it unset (or equal to
+     * the pickup's demand); the load is subtracted on delivery.
      */
-    public StopConfig demand(int units) {
+    public StopConfig demand(long units) {
+        return demand(RoutingBuilder.DEFAULT_DIMENSION, units);
+    }
+
+    /**
+     * Sets the demand in a named capacity dimension (for example {@code "kg"} or
+     * {@code "pallets"}), matched against {@link VehicleConfig#capacity(String, long)}.
+     * A stop may declare demand in any number of dimensions.
+     */
+    public StopConfig demand(String dimension, long units) {
+        Validate.nonBlank(dimension, "demand dimension");
         if (units < 0) throw new ModelException("demand must be >= 0, got: " + units);
-        this.demand = units;
+        this.demands.put(dimension, units);
         return this;
     }
 
@@ -90,6 +106,21 @@ public final class StopConfig {
     public StopConfig penaltyIfDropped(long penalty) {
         Validate.positive(penalty, "penaltyIfDropped");
         this.dropPenalty = penalty;
+        return this;
+    }
+
+    /**
+     * Soft deadline: service may still start after {@code time} (up to {@link #closeAt}), but
+     * every minute late costs {@code penaltyPerMinute} in the objective. Turns the time
+     * dimension on.
+     *
+     * @throws ModelException if {@code time} is null or {@code penaltyPerMinute} is not positive
+     */
+    public StopConfig lateAfter(LocalTime time, long penaltyPerMinute) {
+        if (time == null) throw new ModelException("lateAfter must not be null.");
+        Validate.positive(penaltyPerMinute, "lateAfter penaltyPerMinute");
+        this.lateAfterMin = time.toSecondOfDay() / 60;
+        this.latePenaltyPerMin = penaltyPerMinute;
         return this;
     }
 

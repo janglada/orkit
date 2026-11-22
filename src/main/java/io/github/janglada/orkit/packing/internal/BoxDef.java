@@ -36,17 +36,6 @@ public record BoxDef(
     }
 
     /**
-     * Whether this box participates in any of the orientation / stacking sub-features,
-     * i.e. the solver must take the extended modeling path for at least this box.
-     */
-    public boolean hasStackingOrRotationFeatures() {
-        return rotatable
-                || maxStackedWeight != Long.MAX_VALUE
-                || !aboveIds.isEmpty()
-                || !belowIds.isEmpty();
-    }
-
-    /**
      * The admissible orientations of this box: the distinct axis-permutations of
      * {@code (length, width, height)} when {@link #rotatable()} is true, otherwise the
      * single canonical orientation.

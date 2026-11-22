@@ -46,4 +46,32 @@ public interface Solution {
     default boolean isOptimal() {
         return status() == SolveStatus.OPTIMAL;
     }
+
+    /**
+     * Search statistics for this result: best proven bound, branches, conflicts and, when
+     * requested, an explanation of infeasibility. {@link SolveDiagnostics#none()} by default.
+     */
+    default SolveDiagnostics diagnostics() {
+        return SolveDiagnostics.none();
+    }
+
+    /**
+     * The best objective bound the solver proved, if any: no feasible solution can beat it.
+     * Empty for routing, for models without an objective, and when no solution was found.
+     */
+    default OptionalDouble bestBound() {
+        return diagnostics().bestBound();
+    }
+
+    /**
+     * Relative optimality gap {@code |objective - bound| / max(1, |objective|)}: {@code 0}
+     * for a proven optimum, empty when either the objective or the bound is missing.
+     */
+    default OptionalDouble gap() {
+        OptionalDouble objective = objective();
+        OptionalDouble bound = bestBound();
+        if (objective.isEmpty() || bound.isEmpty()) return OptionalDouble.empty();
+        double obj = objective.getAsDouble();
+        return OptionalDouble.of(Math.abs(obj - bound.getAsDouble()) / Math.max(1.0, Math.abs(obj)));
+    }
 }

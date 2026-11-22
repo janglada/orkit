@@ -1,7 +1,11 @@
 package io.github.janglada.orkit;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -26,6 +30,12 @@ class CpSatKnobsTest {
         S first = problem.solver().timeLimit(LIMIT).workers(4).solve();
         assertThat(first.isOptimal()).as("baseline must be provably optimal").isTrue();
         assertThat(first.objective()).isPresent();
+        // A proven optimum carries its bound, and the bound closes the gap.
+        assertThat(first.bestBound()).isPresent();
+        assertThat(first.gap().orElseThrow()).isLessThan(1e-9);
+        assertThat(first.diagnostics().branches()).isNotNegative();
+        assertThat(first.diagnostics().conflicts()).isNotNegative();
+        assertThat(first.diagnostics().infeasibilityReasons()).isEmpty();
 
         // Warm start from the previous result reaches the same optimum.
         S warmed = problem.solver().timeLimit(LIMIT).workers(4).warmStart(first).solve();
@@ -41,6 +51,8 @@ class CpSatKnobsTest {
             assertThat(s.status()).isEqualTo(SolveStatus.FEASIBLE);
             assertThat(s.objective()).isPresent();
             assertThat(s.runtime().isNegative()).isFalse();
+            assertThat(s.bestBound()).isPresent();
+            assertThat(s.gap().orElseThrow()).isNotNegative();
         }
 
         // Same seed, single worker => identical objective.
@@ -58,6 +70,7 @@ class CpSatKnobsTest {
         assertThatThrownBy(() -> problem.solver().onSolution(null)).isInstanceOf(ModelException.class).hasMessageContaining("onSolution");
         assertThatThrownBy(() -> problem.solver().warmStart(null)).isInstanceOf(ModelException.class).hasMessageContaining("warmStart");
         assertThatThrownBy(() -> problem.solver().workers(0)).isInstanceOf(ModelException.class).hasMessageContaining("workers");
+        assertThatThrownBy(() -> problem.solver().exportModel(null)).isInstanceOf(ModelException.class).hasMessageContaining("exportModel");
         assertThat(problem.warnings()).isEmpty();
     }
 
@@ -145,6 +158,27 @@ class CpSatKnobsTest {
     }
 
     @Test
+    void cutting2DRotationKnobs() {
+        checkKnobs(Optimize.cuttingStock()
+                .stock("S", s -> s.length(12).width(6).quantity(2).cost(10))
+                .required("P", p -> p.length(6).width(4).quantity(3).rotatable(true))
+                .kerf(0)
+                .goal(io.github.janglada.orkit.cutting.Goals.minimizeStockUsed())
+                .build());
+    }
+
+    @Test
+    void cuttingGuillotineKnobs() {
+        checkKnobs(Optimize.cuttingStock()
+                .stock("S", s -> s.length(20).width(10).quantity(3).cost(10))
+                .required("A", p -> p.length(10).width(5).quantity(3))
+                .required("B", p -> p.length(20).width(4).quantity(2))
+                .guillotine(true)
+                .goal(io.github.janglada.orkit.cutting.Goals.minimizeStockUsed())
+                .build());
+    }
+
+    @Test
     void warmStartIgnoresIdsThatNoLongerExist() {
         var small = Optimize.jobShop().machines("M1", "M2")
                 .job("J1", j -> j.operation().on("M1").takes(3).then().on("M2").takes(2))
@@ -179,5 +213,50 @@ class CpSatKnobsTest {
         assertThatThrownBy(() -> Optimize.booking().goal(null)).isInstanceOf(ModelException.class).hasMessageContaining("goal()");
         assertThatThrownBy(() -> Optimize.cuttingStock().goal(null)).isInstanceOf(ModelException.class).hasMessageContaining("goal()");
         assertThatThrownBy(() -> Optimize.jobShop().goal(null)).isInstanceOf(ModelException.class).hasMessageContaining("goal()");
+    }
+
+    @Test
+    void exportModelWritesTextAndBinaryFiles(@TempDir Path dir) throws IOException {
+        var problem = Optimize.multipleKnapsack()
+                .bin("B", b -> b.capacity(5))
+                .item("I", i -> i.profit(3).weight(2))
+                .build();
+        Path text = dir.resolve("model.txt");
+        Path binary = dir.resolve("model.pb");
+        assertThat(problem.solver().exportModel(text).timeLimit(LIMIT).solve().isOptimal()).isTrue();
+        assertThat(problem.solver().exportModel(binary).timeLimit(LIMIT).solve().isOptimal()).isTrue();
+        assertThat(Files.readString(text)).contains("variables");
+        assertThat(Files.size(binary)).isPositive();
+    }
+
+    @Test
+    void exportModelToAMissingDirectoryFails(@TempDir Path dir) {
+        var solver = Optimize.multipleKnapsack()
+                .bin("B", b -> b.capacity(5))
+                .item("I", i -> i.profit(3).weight(2))
+                .solver().exportModel(dir.resolve("missing").resolve("model.txt"));
+        assertThatThrownBy(solver::solve).isInstanceOf(ModelException.class).hasMessageContaining("Could not write");
+    }
+
+    @Test
+    void modelsWithoutObjectiveOrSolutionReportNoBound() {
+        // No goal and no soft goals: CP-SAT solves a pure satisfaction problem.
+        var roster = Optimize.scheduling()
+                .horizon(LocalDate.of(2026, 7, 6), 1)
+                .employee("a", e -> e.skills("RN"))
+                .shift("day", s -> s.daily().from(LocalTime.of(8, 0)).to(LocalTime.of(16, 0)).needs(1).withSkill("RN"))
+                .solver().timeLimit(LIMIT).solve();
+        assertThat(roster.isFeasible()).isTrue();
+        assertThat(roster.objective()).isEmpty();
+        assertThat(roster.bestBound()).isEmpty();
+        assertThat(roster.gap()).isEmpty();
+
+        var infeasible = Optimize.cuttingStock()
+                .stock("S", s -> s.length(50))
+                .required("P", p -> p.length(80))
+                .solver().timeLimit(LIMIT).solve();
+        assertThat(infeasible.status()).isEqualTo(SolveStatus.INFEASIBLE);
+        assertThat(infeasible.bestBound()).isEmpty();
+        assertThat(infeasible.gap()).isEmpty();
     }
 }

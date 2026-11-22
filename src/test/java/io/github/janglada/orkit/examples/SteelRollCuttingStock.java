@@ -41,6 +41,7 @@ public class SteelRollCuttingStock {
                 .required("beam-900",  p -> p.length(900).quantity(5))
                 .required("beam-600",  p -> p.length(600).quantity(4))
 
+                .kerf(3)                                   // saw blade width, in mm
                 .goal(Goals.minimizeWaste())
                 .solver()
                 .timeLimit(Duration.ofSeconds(15))
@@ -49,7 +50,7 @@ public class SteelRollCuttingStock {
 
         System.out.printf("%nStatus        : %s%n", solution.status());
         System.out.printf("StockUsed     : %d roll(s)%n", solution.totalStockUsed());
-        System.out.printf("TotalWaste    : %d mm%n%n", solution.totalWaste());
+        System.out.printf("TotalWaste    : %d mm (kerf loss included)%n%n", solution.totalWaste());
 
         System.out.println("── Roll assignments ───────────────────────────────────────────");
         System.out.printf("%-8s  %-8s  %-7s  %s%n", "Roll", "Length", "Waste", "Pieces (id@start..end)");

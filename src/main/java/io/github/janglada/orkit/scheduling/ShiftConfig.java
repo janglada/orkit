@@ -8,6 +8,9 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -29,7 +32,8 @@ public final class ShiftConfig {
     LocalTime to;
     int needsCount = 1;
     int minCount = -1;   // -1 = same as needsCount (hard staffing)
-    String requiredSkill;
+    final Set<String> requiredSkills = new LinkedHashSet<>();
+    final Map<String, Integer> roles = new LinkedHashMap<>();
     String category;
 
     ShiftConfig() {}
@@ -94,7 +98,28 @@ public final class ShiftConfig {
 
     /** Requires that any employee assigned to this shift possess the given skill. */
     public ShiftConfig withSkill(String skill) {
-        this.requiredSkill = skill;
+        return withSkills(skill);
+    }
+
+    /** Requires that any employee assigned to this shift possess every given skill. */
+    public ShiftConfig withSkills(String... skills) {
+        for (String skill : skills) {
+            Validate.nonBlank(skill, "skill");
+            requiredSkills.add(skill);
+        }
+        return this;
+    }
+
+    /**
+     * Requires {@code count} of the assigned employees to fill a role needing {@code skill}, for
+     * a skill mix such as one charge nurse among four nurses. Each employee fills at most one
+     * role; the remaining assignees fill none. The role counts must not exceed the shift's hard
+     * minimum head-count. The filled role is reported in {@link ShiftAssignment#role()}.
+     */
+    public ShiftConfig role(String skill, int count) {
+        Validate.nonBlank(skill, "role skill");
+        Validate.atLeastOne(count, "role count");
+        roles.merge(skill, count, Integer::sum);
         return this;
     }
 

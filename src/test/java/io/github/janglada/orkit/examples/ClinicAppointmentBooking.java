@@ -50,11 +50,12 @@ public class ClinicAppointmentBooking {
                 .resource("Room-A", r -> r.available(roomHours))
                 .resource("Room-B", r -> r.available(roomHours))
                 .resource("Room-C", r -> r.available(roomHours))
+                .resource("Surgeon", r -> r.available(new TimeSlot(day.atTime(10, 0), close)))
 
                 .appointment("P1-Checkup",      a -> a.duration(Duration.ofMinutes(30)).requiresAnyOf("Room-A", "Room-B", "Room-C").penaltyIfUnscheduled(5))
                 .appointment("P2-Vaccination",  a -> a.duration(Duration.ofMinutes(15)).requiresAnyOf("Room-A", "Room-B", "Room-C").penaltyIfUnscheduled(2))
                 .appointment("P3-Consultation", a -> a.duration(Duration.ofMinutes(60)).requiresAnyOf("Room-A", "Room-B", "Room-C").penaltyIfUnscheduled(10))
-                .appointment("P4-MinorSurgery", a -> a.duration(Duration.ofMinutes(120)).requiresAnyOf("Room-A", "Room-B").penaltyIfUnscheduled(20))
+                .appointment("P4-MinorSurgery", a -> a.duration(Duration.ofMinutes(120)).requiresAnyOf("Room-A", "Room-B").alsoRequiresAnyOf("Surgeon").penaltyIfUnscheduled(20))
                 .appointment("P5-FollowUp",     a -> a.duration(Duration.ofMinutes(20)).requiresAnyOf("Room-A", "Room-B", "Room-C").penaltyIfUnscheduled(3))
                 .appointment("P6-Checkup",      a -> a.duration(Duration.ofMinutes(30)).requiresAnyOf("Room-A", "Room-B", "Room-C").penaltyIfUnscheduled(5))
                 .appointment("P7-Consultation",a -> a.duration(Duration.ofMinutes(90)).requiresAnyOf("Room-A", "Room-C").penaltyIfUnscheduled(15))
@@ -80,9 +81,10 @@ public class ClinicAppointmentBooking {
             }
             on.stream()
                     .sorted(java.util.Comparator.comparing(AppointmentAssignment::start))
-                    .forEach(a -> System.out.printf("  %s  %s–%s  (%d min)%n",
+                    .forEach(a -> System.out.printf("  %s  %s–%s  (%d min)%s%n",
                             pad(a.appointmentId(), 18), a.start().toLocalTime(), a.end().toLocalTime(),
-                            a.duration().toMinutes()));
+                            a.duration().toMinutes(),
+                            a.resourceIds().size() > 1 ? "  with " + String.join(", ", a.resourceIds().subList(1, a.resourceIds().size())) : ""));
         }
 
         if (!solution.unscheduled().isEmpty()) {

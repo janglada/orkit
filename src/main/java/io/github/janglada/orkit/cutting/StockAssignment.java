@@ -39,8 +39,10 @@ public record StockAssignment(
      * @param x       the X (length-axis) origin of the piece on the roll
      * @param y       the Y (width-axis) origin of the piece on the sheet ({@code 0} for 1D)
      * @param width   the width of the piece (Y extent); {@code 0} for a 1D piece
+     * @param rotated whether the piece was turned 90 degrees, so {@code length} and
+     *                {@code width} are the placed extents, swapped from the declaration
      */
-    public record CutPiece(String pieceId, long length, long x, long y, int width) {
+    public record CutPiece(String pieceId, long length, long x, long y, int width, boolean rotated) {
 
         /** The declared piece id this instance was expanded from (the part before {@code #}). */
         public String pieceType() {

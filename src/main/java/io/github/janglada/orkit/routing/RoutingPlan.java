@@ -19,8 +19,9 @@ import java.util.OptionalDouble;
  * {@code UNKNOWN}; {@code INFEASIBLE} means the search space was exhausted.
  * <p>
  * {@link #objective()} depends on the goal: total meters for {@link Goals#totalDistance()},
- * meters plus fixed costs for {@link Goals#totalCost()}, and the vehicle count for
- * {@link Goals#vehiclesUsed()}.
+ * variable plus fixed costs plus lateness penalties for {@link Goals#totalCost()}, and the
+ * vehicle count for {@link Goals#vehiclesUsed()}. Routing proves no bound, so
+ * {@link #diagnostics()} is always {@link io.github.janglada.orkit.SolveDiagnostics#none()}.
  */
 public final class RoutingPlan implements Solution {
 
@@ -83,5 +84,15 @@ public final class RoutingPlan implements Solution {
     /** Sum of {@link Route#fixedCost()} over all used vehicles. */
     public long totalFixedCost() {
         return routes.stream().mapToLong(Route::fixedCost).sum();
+    }
+
+    /** Sum of {@link Route#variableCost()} over all routes. */
+    public long totalVariableCost() {
+        return routes.stream().mapToLong(Route::variableCost).sum();
+    }
+
+    /** Sum of {@link Route#latenessPenalty()} over all routes. */
+    public long totalLatenessPenalty() {
+        return routes.stream().mapToLong(Route::latenessPenalty).sum();
     }
 }

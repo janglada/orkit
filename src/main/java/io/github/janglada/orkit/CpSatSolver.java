@@ -1,5 +1,6 @@
 package io.github.janglada.orkit;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.function.Consumer;
 
@@ -51,6 +52,28 @@ public interface CpSatSolver<S extends Solution> extends Solver<S> {
      * @throws ModelException if {@code previous} is null or not feasible
      */
     CpSatSolver<S> warmStart(S previous);
+
+    /**
+     * Writes the CP-SAT model to {@code file} just before each search, for inspection or
+     * for reproducing a solve outside this library. The file is text protobuf when its name
+     * ends in {@code .txt} or {@code .textproto}, binary protobuf otherwise. The model is
+     * validated first; {@link #solve()} then throws {@link ModelException} if the model is
+     * invalid or the file cannot be written.
+     *
+     * @throws ModelException if {@code file} is null
+     */
+    CpSatSolver<S> exportModel(Path file);
+
+    /**
+     * When the model turns out infeasible, solves it once more with its main constraint groups
+     * labeled (for example a shift's staffing, an operation's deadline, the pieces of one type)
+     * and reports the labels of a set of groups that cannot hold together in
+     * {@link SolveDiagnostics#infeasibilityReasons()}. The set is sufficient for infeasibility
+     * but not necessarily minimal, and constraints the library does not label (such as
+     * no-overlap) are always assumed. Off by default; costs one extra single-worker solve, and
+     * only on infeasible models.
+     */
+    CpSatSolver<S> explainInfeasibility(boolean explain);
 
     /**
      * Asks a running solve to stop as soon as possible; {@link #solve()} then

@@ -8,6 +8,7 @@ import io.github.janglada.orkit.internal.Validate;
 import io.github.janglada.orkit.scheduling.internal.CpSatSchedulingSolver;
 import io.github.janglada.orkit.scheduling.internal.EmployeeDef;
 import io.github.janglada.orkit.scheduling.internal.LockDef;
+import io.github.janglada.orkit.scheduling.internal.RoleDef;
 import io.github.janglada.orkit.scheduling.internal.ShiftDef;
 
 import java.util.Set;
@@ -55,7 +56,13 @@ public final class SchedulingBuilder implements CpSatProblem<EmployeeRoster> {
                 cfg.availableDays.isEmpty() ? Set.of() : Set.copyOf(cfg.availableDays),
                 cfg.maxHoursPerWeek,
                 Set.copyOf(cfg.preferredShifts),
-                Set.copyOf(cfg.blockedDates)));
+                Set.copyOf(cfg.blockedDates),
+                cfg.minHoursPerWeek,
+                cfg.contractHoursPerWeek));
+        if (cfg.maxHoursPerWeek > 0 && cfg.minHoursPerWeek > cfg.maxHoursPerWeek) {
+            throw new ModelException("Employee '" + id + "': minHoursPerWeek " + cfg.minHoursPerWeek
+                    + " exceeds maxHoursPerWeek " + cfg.maxHoursPerWeek + ".");
+        }
         return this;
     }
 
@@ -82,8 +89,13 @@ public final class SchedulingBuilder implements CpSatProblem<EmployeeRoster> {
         int min = cfg.minCount < 0 ? cfg.needsCount : cfg.minCount;
         if (min > cfg.needsCount)
             throw new ModelException("Shift '" + id + "': needsAtLeast(" + min + ") exceeds needs(" + cfg.needsCount + ").");
+        List<RoleDef> roles = new ArrayList<>();
+        cfg.roles.forEach((skill, count) -> roles.add(new RoleDef(skill, count)));
+        int roleTotal = roles.stream().mapToInt(RoleDef::count).sum();
+        if (roleTotal > min)
+            throw new ModelException("Shift '" + id + "': roles need " + roleTotal + " employees but the shift's hard minimum is " + min + ".");
         shifts.put(id, new ShiftTemplate(id, Set.copyOf(cfg.days), cfg.daily, cfg.specificDate,
-                cfg.from, cfg.to, cfg.needsCount, min, cfg.requiredSkill, cfg.category));
+                cfg.from, cfg.to, cfg.needsCount, min, Set.copyOf(cfg.requiredSkills), roles, cfg.category));
         return this;
     }
 
@@ -183,7 +195,7 @@ public final class SchedulingBuilder implements CpSatProblem<EmployeeRoster> {
                     throw new ModelException("Shift '" + t.id() + "' date " + t.date()
                             + " is outside the horizon [" + horizonStart + ", +" + horizonDays + " days)");
                 }
-                out.add(new ShiftDef(t.id(), t.id(), t.date(), t.from(), t.to(), t.needs(), t.min(), t.skill(), t.category()));
+                out.add(new ShiftDef(t.id(), t.id(), t.date(), t.from(), t.to(), t.needs(), t.min(), t.skills(), t.roles(), t.category()));
                 continue;
             }
             int before = out.size();
@@ -191,7 +203,7 @@ public final class SchedulingBuilder implements CpSatProblem<EmployeeRoster> {
                 LocalDate date = horizonStart.plusDays(d);
                 if (t.daily() || t.days().contains(date.getDayOfWeek())) {
                     out.add(new ShiftDef(t.id() + "@" + date, t.id(), date, t.from(), t.to(),
-                            t.needs(), t.min(), t.skill(), t.category()));
+                            t.needs(), t.min(), t.skills(), t.roles(), t.category()));
                 }
             }
             if (out.size() == before) {
@@ -232,7 +244,7 @@ public final class SchedulingBuilder implements CpSatProblem<EmployeeRoster> {
                             + s.templateId() + "' on " + s.date() + ".");
                 }
                 if (lock.assign()) {
-                    if (!emp.hasSkill(s.requiredSkill()) || !emp.isAvailableOn(s.date().getDayOfWeek(), s.date())) {
+                    if (!emp.hasSkills(s.requiredSkills()) || !emp.isAvailableOn(s.date().getDayOfWeek(), s.date())) {
                         throw new ModelException("assign('" + lock.employeeId() + "','" + s.templateId() + "'): employee '"
                                 + lock.employeeId() + "' is not eligible for this shift on " + s.date()
                                 + " (skill/availability).");
@@ -271,7 +283,7 @@ public final class SchedulingBuilder implements CpSatProblem<EmployeeRoster> {
     /** A declared shift before expansion over the horizon. */
     private record ShiftTemplate(String id, Set<DayOfWeek> days, boolean daily, LocalDate date,
                                  java.time.LocalTime from, java.time.LocalTime to,
-                                 int needs, int min, String skill, String category) {}
+                                 int needs, int min, Set<String> skills, List<RoleDef> roles, String category) {}
 
     /** An assign/forbid declaration before resolution; {@code date == null} means every instance. */
     private record Lock(String employeeId, String shiftId, LocalDate date, boolean assign) {}

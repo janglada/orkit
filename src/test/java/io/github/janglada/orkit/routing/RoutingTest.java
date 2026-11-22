@@ -1126,7 +1126,7 @@ class RoutingTest {
         Route r = plan.routeOf("V").orElseThrow();
         assertThat(r.hasTimes()).isFalse();
         assertThat(r.visits()).hasSize(r.stops().size());
-        int prev = 0;
+        long prev = 0;
         for (Visit v : r.visits()) {
             assertThat(v.arrival()).isNull();
             assertThat(v.departure()).isNull();
@@ -1326,8 +1326,8 @@ class RoutingTest {
             assertThat(r.stops()).contains(pair[1]);
             assertThat(r.stops().indexOf(pair[0])).isLessThan(r.stops().indexOf(pair[1]));
             // Load goes up at the pickup and back down at the delivery.
-            int atPickup = r.visits().get(r.stops().indexOf(pair[0])).loadAfter();
-            int atDelivery = r.visits().get(r.stops().indexOf(pair[1])).loadAfter();
+            long atPickup = r.visits().get(r.stops().indexOf(pair[0])).loadAfter();
+            long atDelivery = r.visits().get(r.stops().indexOf(pair[1])).loadAfter();
             assertThat(atPickup).isGreaterThan(atDelivery);
         }
     }

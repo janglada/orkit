@@ -115,9 +115,8 @@ public class HospitalNurseScheduling {
             return;
         }
 
-        roster.objective().ifPresent(c ->
-            System.out.printf("Cost   : %.0f  (minute·$/h)  ≈  $%.2f%n",
-                    c, c / 60.0));
+        System.out.printf("Cost   : $%.2f labor%n", roster.laborCost());
+        roster.gap().ifPresent(g -> System.out.printf("Gap    : %.2f%%%n", 100 * g));
 
         // Print roster grid: rows = nurses, cols = days, cells = shift type
         System.out.println();

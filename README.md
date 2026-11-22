@@ -26,7 +26,7 @@ Not yet published to Maven Central. Install it locally with `mvn install`, then 
 mvn verify
 ```
 
-`verify` compiles with all lint warnings treated as errors, runs about 430 JUnit tests, enforces
+`verify` compiles with all lint warnings treated as errors, runs about 500 JUnit tests, enforces
 the JaCoCo coverage floor (97% of lines, 90% of branches), and builds the sources and javadoc
 jars with doclint on. The tests include per-domain invariant validators, database-driven
 examples, a child-JVM native-memory guard, a child-JVM check that builders work without
@@ -153,6 +153,35 @@ System.out.println("Rush late by " + schedule.tardinessOf("Rush"));
 - `.weight(w)` (default 1) multiplies the job's tardiness terms and its completion time under `minimizeWeightedCompletionTime()`.
 - `.noWait()` / `.maxLag(lag)` apply to every consecutive pair of a job; `.maxLagAfterPrevious(lag)` overrides for one operation (not allowed on the first).
 
+#### Precedences between jobs, parallel machines, and calendar time
+
+```java
+LocalDateTime monday = LocalDateTime.of(2026, 7, 6, 8, 0);
+
+JobShopSchedule schedule = Optimize.jobShop()
+        .startingAt(monday).timeUnit(Duration.ofMinutes(15))   // model unit = 15 minutes
+        .machines("Press")
+        .machine("Oven", 2)                                     // two parts bake at once
+        .downtime("Press", monday.plusHours(4), monday.plusHours(5))
+        .job("Frame", j -> j.operation().on("Press").takes(Duration.ofHours(1))
+                .then().on("Oven").takes(Duration.ofHours(2)))
+        .job("Door", j -> j.operation().on("Press").takes(Duration.ofMinutes(45))
+                .then().on("Oven").takes(Duration.ofHours(2))
+                .dueBy(monday.plusHours(6)))
+        .job("Assembly", j -> j.operation().on("Press").takes(Duration.ofMinutes(30)))
+        .precedence("Frame", "Assembly")                       // Assembly starts after Frame ends
+        .precedence("Door", 1, "Assembly", 0)                  // and after the Door's baking
+        .goal(Goals.minimizeMakespanAndTardiness(1, 5))
+        .solver().timeLimit(Duration.ofSeconds(15)).solve();
+
+schedule.operationsOf("Assembly").get(0).startTime();         // LocalDateTime
+schedule.makespanDuration();                                   // Optional<Duration>
+```
+
+- `.precedence(before, after)` links a job's last operation to another job's first; `.precedence(job, op, job, op)` links any two operations. Unknown ids, out-of-range indices and cycles are rejected at build time.
+- `.machine(id, capacity)` runs up to `capacity` operations at once (a `Cumulative` constraint); downtime blocks the whole machine. Setup times need a capacity-1 machine.
+- `.startingAt(origin)` (and optionally `.timeUnit(unit)`, default one minute) must come before the jobs. It enables `takes(Duration)`, `releaseAt/deadlineAt/dueBy(LocalDateTime)` and `downtime(machine, LocalDateTime, LocalDateTime)`; values off the unit grid are rejected, not rounded. `ScheduledOperation.startTime()/endTime()` are `null` without a calendar.
+
 ### Employee shift scheduling
 
 ```java
@@ -199,7 +228,9 @@ System.out.println(roster.staffOf("Night", LocalDate.of(2026, 7, 10)));
 - **Locks.** `.assign(employee, shift)` / `.forbid(employee, shift)` apply to every instance; add a `LocalDate` for one instance. Assigning an ineligible employee, assigning more people than `needs`, or both assigning and forbidding the same pair fails at build time.
 - **Forbidden sequences.** Tag shifts with `.category(...)` and use `Rules.forbidSequence(from, to)` to ban a `to` shift on the day after a `from` shift. Unlike `minRestBetweenShifts` this is categorical and day-based.
 - **Soft staffing.** `.needsAtLeast(min)` makes `needs(n)` a target; each missing employee is penalized with `Goals.penalizeUnderstaffing(weight)` (default weight 100 when the goal is not declared).
-- **Weekly hours.** `maxHoursPerWeek` caps every window of 7 consecutive days, not the whole horizon.
+- **Weekly hours.** `maxHoursPerWeek` caps every window of 7 consecutive days, not the whole horizon. `minHoursPerWeek` is a hard floor and `contractHoursPerWeek` a soft target (every minute away costs `Goals.penalizeContractDeviation(weight)`, default 1), both per full week from the horizon start; a trailing partial week is not constrained.
+- **Skills and roles.** `.withSkills("RN", "ICU")` requires every listed skill; `.role("CHARGE", 1)` requires that many assignees to fill a role needing that skill (reported in `ShiftAssignment.role()`). Role counts may not exceed the shift's hard minimum.
+- **Cost in currency.** The objective mixes cost (`costPerHour × minutes`) with soft-goal weights; `roster.laborCost()` and `ShiftAssignment.cost()` report plain currency, and `roster.hoursOf(employee)` the hours worked.
 
 ### Vehicle routing
 
@@ -286,6 +317,11 @@ plan.routeOf("Reefer").ifPresent(r -> System.out.println("Reefer: " + r.stops())
 - **Optional stops.** `allowDroppingStops(penalty)` makes every stop droppable at that cost; `StopConfig.penaltyIfDropped(penalty)` makes one stop droppable at its own cost and overrides the model-wide penalty for that stop. A pickup-and-delivery pair whose stops carry different penalties uses the larger one for both.
 - **Skills.** `StopConfig.requires(...)` restricts a stop to vehicles declaring every listed skill via `VehicleConfig.skills(...)`; a stop nobody can serve fails fast.
 - **Travel times.** `DistanceSource.fromMatrices(meters, minutes)` supplies real travel times and makes `travelSpeedKmh` irrelevant.
+- **Several capacities.** `VehicleConfig.capacity("kg", 900).capacity("pallets", 6)` and `StopConfig.demand("kg", 120).demand("pallets", 1)` add one capacity dimension each; `capacity(n)`/`demand(n)` use the dimension `"load"`. A dimension a vehicle does not declare is unbounded for it. `Route.loads()` and `Visit.loadsAfter()` report every dimension.
+- **Soft deadlines.** `StopConfig.lateAfter(time, penaltyPerMinute)` lets service start late (up to `closeAt`) at a cost; `Visit.minutesLate()`, `Route.latenessPenalty()` and `plan.totalLatenessPenalty()` report it.
+- **Driver breaks.** `VehicleConfig.breakBetween(earliest, latest, duration)` reserves a break that interrupts a drive, never a service, or falls before or after the route; `Route.breaks()` reports it.
+- **Variable costs.** Under `Goals.totalCost()`, `VehicleConfig.costPerMeter(c)` (default 1) and `costPerMinute(c)` (default 0) price each vehicle's distance and route duration; `Route.variableCost()` reports them.
+- **Vehicle count.** `Goals.vehiclesUsed()` never drops a servable stop to save a vehicle, whatever the drop penalty; penalties only decide among stops no vehicle can serve.
 
 ### Multiple knapsack
 
@@ -355,7 +391,9 @@ for (ContainerAssignment a : sol.assignments()) {
 
 Boxes too large for any container appear in `sol.unassignedBoxes()`. Each `ContainerAssignment` carries per-box `BoxPlacement` records with origin coordinates (x, y, z) and the applied `Orientation` (null for non-rotatable boxes) for 3D non-overlap verification.
 
-Beyond the classical no-overlap + weight-limit model, boxes opt into stacking sub-features: `.rotatable(true)` lets the solver choose any distinct axis-permutation of the box dimensions; `.maxStackedWeight(w)` caps the total weight of boxes resting on a supporting box; `.above(id)` / `.below(id)` declare an explicit vertical order between two boxes; and `.requireSupport(true)` enforces that every box resting on another has its XY footprint contained within the supporter below. All default off, preserving the classical model.
+Beyond the classical no-overlap + weight-limit model, boxes opt into stacking sub-features: `.rotatable(true)` lets the solver choose any distinct axis-permutation of the box dimensions; `.maxStackedWeight(w)` caps the total weight of boxes placed above a box; `.above(id)` / `.below(id)` declare an explicit vertical order between two boxes; and `.requireSupport(true)` makes every box stand on the floor or rest flush on one box whose footprint contains its own, so nothing hovers. All default off, preserving the classical model.
+
+The model gives each box one position and each pair of boxes one set of separation literals, with volume and cross-section relaxations and symmetry breaking between identical boxes and containers; a few dozen rotatable boxes solve to proven optimality in seconds.
 
 ### Resource booking (appointment scheduling)
 
@@ -394,6 +432,8 @@ for (AppointmentAssignment a : plan.assignments()) {
 }
 ```
 
+An appointment can need several resources at once: `.requiresAnyOf("Dr-Chen", "Dr-Patel").alsoRequiresAnyOf("Room-1", "Room-2").requiresAllOf("Nurse-Ana")` books one doctor, one room and the nurse for the same time. `AppointmentAssignment.resourceIds()` lists them, one per requirement; `resourceId()` is the first. Among equally good solutions the earliest starts win (`preferEarlyStarts(false)` turns that off); `objective()` reports the goal alone.
+
 Availability may be given as explicit `TimeSlot`s, weekly windows (`available(DayOfWeek, from, to)`), or daily windows (`availableDaily(from, to)`), in any combination; overlapping windows are merged and an appointment must fit entirely inside one window. A `buffer` keeps the resource blocked after the appointment without appearing in the reported `end()`. Declarations may come in any order; times are resolved against the horizon when the problem is built. Appointments may declare `earliest`/`latest` bounds and an unscheduled penalty; `plan.unscheduled()` lists those that could not be placed.
 
 ### Cutting stock
@@ -422,9 +462,9 @@ for (StockAssignment a : sol.assignments()) {
 }
 ```
 
-All required pieces must be placed; the model is infeasible if total piece length exceeds total stock length. `quantity` expands a stock or piece type into instances whose ids are `"<declared id>#<n>"` (for example `R1#2`); `StockAssignment.stockType()` and `CutPiece.pieceType()` return the declared id. `MinimizeWaste` minimizes total length consumed; `MinimizeStockUsed` minimizes the number of rolls used (different behaviors when rolls have different lengths).
+All required pieces must be placed (unless `allowDroppingPieces(penalty)`); the model is infeasible if total piece length exceeds total stock length. The 1D model counts pieces of each type per roll, so it scales with the number of piece types rather than pieces; offsets are assigned after the solve, and `kerf(k)` reserves the blade width between pieces. `quantity` expands a stock or piece type into instances whose ids are `"<declared id>#<n>"` (for example `R1#2`); `StockAssignment.stockType()` and `CutPiece.pieceType()` return the declared id. `MinimizeWaste` minimizes total length consumed; `MinimizeStockUsed` minimizes the number of rolls used (different behaviors when rolls have different lengths).
 
-**2D non-guillotine cutting.** Declare a `.width(...)` on every stock and piece to switch to the 2D path: each stock becomes a sheet (length × width) and pieces are placed as rectangles with X/Y origins, subject to pairwise 2D no-overlap constraints. `MinimizeWaste` is dimension-aware — it minimizes total length consumed in 1D but total **area** consumed (`used[r] * length * width`) in 2D; `MinimizeStockUsed` (sheet count) and `MinimizeTotalCost` work the same in either dimension. Mixed 1D/2D models (some items with width, some without) are rejected. Guillotine cutting is planned; 2D non-guillotine is supported today.
+**2D non-guillotine cutting.** Declare a `.width(...)` on every stock and piece to switch to the 2D path: each stock becomes a sheet (length × width) and pieces are placed as rectangles with X/Y origins, subject to pairwise 2D no-overlap constraints. `MinimizeWaste` is dimension-aware — it minimizes total length consumed in 1D but total **area** consumed (`used[r] * length * width`) in 2D; `MinimizeStockUsed` (sheet count) and `MinimizeTotalCost` work the same in either dimension. Mixed 1D/2D models (some items with width, some without) are rejected. `PieceConfig.rotatable(true)` lets a piece turn 90 degrees (`CutPiece.rotated()`), and `CuttingBuilder.guillotine(true)` restricts layouts to two-stage shelves that edge-to-edge cuts can always produce (free-form multi-stage guillotine patterns are not modeled; rotation is not allowed with it).
 
 ```java
 CuttingSolution sol = Optimize.cuttingStock()
@@ -476,6 +516,7 @@ Every `solve()` returns a `Solution` subtype exposing:
 - `runtime()` — `Duration` spent solving.
 - `isFeasible()` — `true` when status is `OPTIMAL` or `FEASIBLE`.
 - `isOptimal()` — `true` only when the solver proved global optimality.
+- `diagnostics()` — a `SolveDiagnostics` with the best proven bound, branches and conflicts (CP-SAT domains; routing reports none), plus `bestBound()` and `gap()` (relative optimality gap) shortcuts. Intermediate solutions carry them too.
 
 Lookups such as `MultipleKnapsackSolution.binOf(item)` or `PackingSolution.containerOf(box)` return `Optional` (empty for an unassigned or unknown id). A built problem exposes `warnings()` for non-fatal diagnostics.
 
@@ -484,8 +525,8 @@ Lookups such as `MultipleKnapsackSolution.binOf(item)` or `PackingSolution.conta
 `build()` returns an immutable problem; `solver()` on it (or directly on the builder) returns a fresh solver each call. A solver runs one solve at a time (a second concurrent `solve()` on the same solver throws `ModelException`), so take one solver per thread. Time limits must be positive.
 
 - **Every solver** (`io.github.janglada.orkit.Solver`): `timeLimit(Duration)`, `verbose(boolean)`, `solve()`.
-- **CP-SAT domains** (`io.github.janglada.orkit.CpSatSolver`, all except routing): `workers(int)` (default **8**, CP-SAT's tuned portfolio size, capped at the processors available to the JVM), `seed(int)` (reproducible only with `workers(1)`), `onSolution(Consumer<S>)` to receive each improving intermediate result, `warmStart(S previous)` to hint the search from an earlier feasible result (ids that no longer exist are ignored), and `cancel()` to stop a running solve and keep the best result so far (a cancel issued while the model is still being built is honored too). A listener exception stops the search and is rethrown wrapped in `ModelException`; an `Error` is rethrown as is.
-- **Routing** (`io.github.janglada.orkit.routing.RoutingSolver`): `firstSolution(Strategy)`, `improveWith(Metaheuristic)`, and `cancel()` (best routes so far, or `UNKNOWN` if none was found yet). OR-Tools routing search has no worker count or seed, so those knobs are deliberately absent.
+- **CP-SAT domains** (`io.github.janglada.orkit.CpSatSolver`, all except routing): `exportModel(Path)` writes the validated CP-SAT model before each search (text protobuf for `.txt`/`.textproto`, binary otherwise); `explainInfeasibility(true)` re-solves an infeasible model with its main constraint groups labeled and reports a set that cannot hold together in `diagnostics().infeasibilityReasons()` (for example `"staffing: shift 'day' on 2026-07-06 needs 2 qualified employee(s)"`); `workers(int)` (default **8**, CP-SAT's tuned portfolio size, capped at the processors available to the JVM), `seed(int)` (reproducible only with `workers(1)`), `onSolution(Consumer<S>)` to receive each improving intermediate result, `warmStart(S previous)` to hint the search from an earlier feasible result (ids that no longer exist are ignored), and `cancel()` to stop a running solve and keep the best result so far (a cancel issued while the model is still being built is honored too). A listener exception stops the search and is rethrown wrapped in `ModelException`; an `Error` is rethrown as is.
+- **Routing** (`io.github.janglada.orkit.routing.RoutingSolver`): `firstSolution(Strategy)`, `improveWith(Metaheuristic)`, `onSolution(Consumer)` for every accepted solution, `warmStart(previousPlan)` to start the search from earlier routes (stale ids are ignored; infeasible routes fall back to a cold start), and `cancel()` (best routes so far, or `UNKNOWN` if none was found yet). OR-Tools routing search has no worker count or seed, so those knobs are deliberately absent.
 
 ```java
 var problem = Optimize.jobShop()....build();

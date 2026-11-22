@@ -26,7 +26,7 @@ public final class StockConfig {
     }
 
     /**
-     * Sets the usable width of one sheet of this stock, enabling the 2D (non-guillotine)
+     * Sets the usable width of one sheet of this stock, enabling the 2D
      * cutting path. Must be {@code >= 1}. When left unset (or set to 0) the stock is
      * treated as 1D. If any stock or piece declares a width, then every stock and piece
      * must declare one — mixed 1D/2D models are rejected at solve time.

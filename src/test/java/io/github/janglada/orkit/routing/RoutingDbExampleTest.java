@@ -141,7 +141,7 @@ class RoutingDbExampleTest {
             }
 
             // Total served demand equals sum of all stop demands
-            int servedDemand = plan.routes().stream().mapToInt(Route::load).sum();
+            long servedDemand = plan.routes().stream().mapToLong(Route::load).sum();
             assertThat(servedDemand)
                     .as("served demand must equal total stop demand")
                     .isEqualTo(totalDemand);

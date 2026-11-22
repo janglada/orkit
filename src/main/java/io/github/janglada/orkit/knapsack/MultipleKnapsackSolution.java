@@ -1,6 +1,7 @@
 package io.github.janglada.orkit.knapsack;
 
 import io.github.janglada.orkit.Solution;
+import io.github.janglada.orkit.SolveDiagnostics;
 import io.github.janglada.orkit.SolveStatus;
 
 import java.time.Duration;
@@ -10,16 +11,27 @@ import java.util.*;
 public final class MultipleKnapsackSolution implements Solution {
 
     private final SolveStatus status;
+    private final SolveDiagnostics diagnostics;
     private final OptionalDouble objective;
     private final Duration runtime;
     private final long totalProfit;
     private final List<BinAssignment> assignments;
     private final List<String> unassignedItems;
 
+    /** Creates a result without search statistics ({@link SolveDiagnostics#none()}). */
     public MultipleKnapsackSolution(SolveStatus status, OptionalDouble objective, Duration runtime,
                                     long totalProfit, List<BinAssignment> assignments,
                                     List<String> unassignedItems) {
+        this(status, objective, runtime, totalProfit, assignments, unassignedItems, SolveDiagnostics.none());
+    }
+
+    /** Creates a result with the given search statistics. */
+    public MultipleKnapsackSolution(SolveStatus status, OptionalDouble objective, Duration runtime,
+                                    long totalProfit, List<BinAssignment> assignments,
+                                    List<String> unassignedItems,
+                                    SolveDiagnostics diagnostics) {
         this.status = status;
+        this.diagnostics = (diagnostics == null) ? SolveDiagnostics.none() : diagnostics;
         this.objective = objective;
         this.runtime = runtime;
         this.totalProfit = totalProfit;
@@ -30,6 +42,8 @@ public final class MultipleKnapsackSolution implements Solution {
     @Override public SolveStatus status()       { return status; }
     @Override public OptionalDouble objective() { return objective; }
     @Override public Duration runtime()         { return runtime; }
+    /** Search statistics reported by CP-SAT for this result. */
+    @Override public SolveDiagnostics diagnostics() { return diagnostics; }
 
     /** Total profit of all packed items. Zero if no solution was found. */
     public long totalProfit() {

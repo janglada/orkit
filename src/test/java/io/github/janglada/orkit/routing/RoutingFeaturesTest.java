@@ -250,8 +250,8 @@ class RoutingFeaturesTest {
                 .solver().timeLimit(Duration.ofSeconds(5)).solve();
         Route r = plan.routeOf("V").orElseThrow();
         assertThat(r.load()).isEqualTo(5);                   // X + P, not D
-        int atD = r.visits().get(r.stops().indexOf("D")).loadAfter();
-        int atP = r.visits().get(r.stops().indexOf("P")).loadAfter();
+        long atD = r.visits().get(r.stops().indexOf("D")).loadAfter();
+        long atP = r.visits().get(r.stops().indexOf("P")).loadAfter();
         assertThat(atP - atD).isEqualTo(3);
     }
 

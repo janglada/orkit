@@ -21,6 +21,9 @@ import java.util.function.Consumer;
 /** Fluent builder for vehicle routing problems. Entry point: {@code Optimize.vehicleRouting()}. */
 public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
 
+    /** Name of the capacity dimension used by {@link VehicleConfig#capacity(long)} and {@link StopConfig#demand(long)}. */
+    public static final String DEFAULT_DIMENSION = "load";
+
     private final List<DepotDef> depots        = new ArrayList<>();
     private final Set<String> depotIds        = new LinkedHashSet<>();
     private final List<VehicleDef> vehicles = new ArrayList<>();
@@ -64,10 +67,10 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         VehicleConfig cfg = new VehicleConfig();
         cfg.id = id;
         config.accept(cfg);
-        vehicles.add(new VehicleDef(id, cfg.capacity, cfg.maxDistanceMeters,
+        vehicles.add(new VehicleDef(id, cfg.capacities, cfg.maxDistanceMeters,
                 cfg.startDepotId, cfg.endDepotId,
                 cfg.availableFromMin, cfg.availableUntilMin, cfg.maxRouteDurationMin,
-                cfg.fixedCost, Set.copyOf(cfg.skills)));
+                cfg.fixedCost, cfg.skills, cfg.breaks, cfg.costPerMeter, cfg.costPerMinute));
         return this;
     }
 
@@ -96,8 +99,9 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
         cfg.id = id;
         config.accept(cfg);
         if (!cfg.atSet) stopsWithoutCoordinates.add(id);
-        stops.add(new StopDef(id, cfg.lat, cfg.lon, cfg.demand,
-                cfg.serviceTimeMin, cfg.openMin, cfg.closeMin, Set.copyOf(cfg.requiredSkills), cfg.dropPenalty));
+        stops.add(new StopDef(id, cfg.lat, cfg.lon, cfg.demands,
+                cfg.serviceTimeMin, cfg.openMin, cfg.closeMin, cfg.requiredSkills, cfg.dropPenalty,
+                cfg.lateAfterMin, cfg.latePenaltyPerMin));
         return this;
     }
 
@@ -211,10 +215,13 @@ public final class RoutingBuilder implements OptimizationProblem<RoutingPlan> {
                     throw new ModelException("Stop '" + id + "' already belongs to a pickup-and-delivery pair.");
                 }
             }
-            if (delivery.demand() != 0 && delivery.demand() != pickup.demand()) {
-                throw new ModelException("pickupAndDelivery('" + pair.pickupId() + "','" + pair.deliveryId()
-                        + "'): delivery demand " + delivery.demand() + " must equal pickup demand "
-                        + pickup.demand() + " (or be omitted).");
+            for (var e : delivery.demands().entrySet()) {
+                long picked = pickup.demand(e.getKey());
+                if (e.getValue() != 0 && e.getValue() != picked) {
+                    throw new ModelException("pickupAndDelivery('" + pair.pickupId() + "','" + pair.deliveryId()
+                            + "'): delivery demand " + e.getValue() + " must equal pickup demand "
+                            + picked + " in dimension '" + e.getKey() + "' (or be omitted).");
+                }
             }
         }
     }

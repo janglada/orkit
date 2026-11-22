@@ -9,5 +9,9 @@
  * {@link io.github.janglada.orkit.Optimize#vehicleRouting()}, {@link io.github.janglada.orkit.Optimize#multipleKnapsack()},
  * {@link io.github.janglada.orkit.Optimize#packing()}, {@link io.github.janglada.orkit.Optimize#booking()}, or
  * {@link io.github.janglada.orkit.Optimize#cuttingStock()}.
+ *
+ * <p>Every result reports its {@link io.github.janglada.orkit.SolveStatus}, objective, runtime
+ * and {@link io.github.janglada.orkit.SolveDiagnostics}; CP-SAT solvers can also export their model
+ * and explain infeasibility (see {@link io.github.janglada.orkit.CpSatSolver}).
  */
 package io.github.janglada.orkit;

@@ -9,9 +9,15 @@ import io.github.janglada.orkit.internal.Validate;
 import io.github.janglada.orkit.jobshop.internal.CpSatJobShopSolver;
 import io.github.janglada.orkit.jobshop.internal.DowntimeDef;
 import io.github.janglada.orkit.jobshop.internal.JobDef;
+import io.github.janglada.orkit.jobshop.internal.PrecedenceDef;
 import io.github.janglada.orkit.jobshop.internal.SetupMatrix;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.Iterator;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -36,6 +42,10 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
     // initialTypes: (machine -> type)
     private final Map<String, String> initialTypes = new LinkedHashMap<>();
     private final List<DowntimeDef> downtimes = new ArrayList<>();
+    private final Map<String, Integer> capacities = new LinkedHashMap<>();
+    /** Declared precedences; an operation index of -1 means the job's last operation. */
+    private final List<PrecedenceDef> precedences = new ArrayList<>();
+    private TimeGrid grid;
 
     // Objective — default minimizes makespan; release/deadline/due are set per operation.
     private JobShopGoal goal = new JobShopGoal.MinimizeMakespan();
@@ -50,6 +60,76 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
     }
 
     /**
+     * Registers a machine that runs up to {@code capacity} operations at the same time, such as
+     * a bank of identical ovens. Capacity 1 is the same as {@link #machines(String...)}.
+     * Sequence-dependent setup times are not supported on a machine with capacity above 1.
+     */
+    public JobShopBuilder machine(String id, int capacity) {
+        Validate.nonBlank(id, "machine id");
+        Validate.atLeastOne(capacity, "machine capacity");
+        machines.add(id);
+        capacities.put(id, capacity);
+        return this;
+    }
+
+    /**
+     * Anchors model time 0 at {@code origin}, so operations may use {@code LocalDateTime} and
+     * {@code Duration} values ({@link OperationConfig#takes(Duration)},
+     * {@link OperationConfig#releaseAt(LocalDateTime)} and friends) and the schedule reports
+     * wall-clock times. One model unit is one minute unless {@link #timeUnit(Duration)} says
+     * otherwise. Must be called before any job is declared.
+     */
+    public JobShopBuilder startingAt(LocalDateTime origin) {
+        if (origin == null) throw new ModelException("startingAt() must not be null.");
+        requireNoJobs("startingAt()");
+        this.grid = new TimeGrid(origin, grid == null ? Duration.ofMinutes(1) : grid.unit());
+        return this;
+    }
+
+    /**
+     * Sets the length of one model time unit for calendar inputs; default one minute. Values
+     * that are not whole multiples of it are rejected. Requires
+     * {@link #startingAt(LocalDateTime)} and must be called before any job is declared.
+     */
+    public JobShopBuilder timeUnit(Duration unit) {
+        Validate.positive(unit, "timeUnit");
+        requireNoJobs("timeUnit()");
+        if (grid == null) throw new ModelException("timeUnit() needs startingAt(...) first.");
+        this.grid = new TimeGrid(grid.origin(), unit);
+        return this;
+    }
+
+    private void requireNoJobs(String what) {
+        if (!jobs.isEmpty()) throw new ModelException(what + " must be called before any job is declared.");
+    }
+
+    /**
+     * Requires job {@code beforeJob} to finish before job {@code afterJob} starts: the last
+     * operation of the first ends before the first operation of the second starts. Jobs may be
+     * declared later; cycles are rejected when the problem is built.
+     */
+    public JobShopBuilder precedence(String beforeJob, String afterJob) {
+        Validate.nonBlank(beforeJob, "precedence job");
+        Validate.nonBlank(afterJob, "precedence job");
+        precedences.add(new PrecedenceDef(beforeJob, -1, afterJob, 0));
+        return this;
+    }
+
+    /**
+     * Requires operation {@code beforeOp} of {@code beforeJob} to end before operation
+     * {@code afterOp} of {@code afterJob} starts (0-based indices). Cycles are rejected when the
+     * problem is built.
+     */
+    public JobShopBuilder precedence(String beforeJob, int beforeOp, String afterJob, int afterOp) {
+        Validate.nonBlank(beforeJob, "precedence job");
+        Validate.nonBlank(afterJob, "precedence job");
+        Validate.nonNegative(beforeOp, "precedence operation index");
+        Validate.nonNegative(afterOp, "precedence operation index");
+        precedences.add(new PrecedenceDef(beforeJob, beforeOp, afterJob, afterOp));
+        return this;
+    }
+
+    /**
      * Adds a job to the schedule, configuring its ordered operations inside the
      * supplied lambda via {@link JobConfig}.
      */
@@ -58,7 +138,7 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
         if (!jobIds.add(id)) {
             throw new ModelException("Duplicate job id: '" + id + "'.");
         }
-        JobConfig cfg = new JobConfig();
+        JobConfig cfg = new JobConfig(grid);
         config.accept(cfg);
         cfg.commitPending();
         if (cfg.committed.isEmpty()) {
@@ -133,6 +213,14 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
         return this;
     }
 
+    /** Machine downtime as wall-clock times; requires {@link #startingAt(LocalDateTime)}. See {@link #downtime(String, long, long)}. */
+    public JobShopBuilder downtime(String machine, LocalDateTime from, LocalDateTime to) {
+        if (grid == null) {
+            throw new ModelException("downtime(LocalDateTime) needs a calendar: call startingAt(...) first.");
+        }
+        return downtime(machine, grid.units(from, "downtime from"), grid.units(to, "downtime to"));
+    }
+
     /**
      * Sets the optimization objective. The default {@link Goals#minimizeMakespan()}
      * preserves historical behavior. Use {@link Goals#minimizeTardiness(long)} or
@@ -148,8 +236,15 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
     /** Builds an immutable, reusable problem instance. */
     public CpSatProblem<JobShopSchedule> build() {
         SetupMatrix matrix = buildSetupMatrix();
-        return new JobShopProblem(List.copyOf(machines), List.copyOf(jobs), matrix, goal,
-                mergedDowntimes(), collectUnusedTypeWarnings(matrix));
+        for (String m : capacities.keySet()) {
+            if (capacities.get(m) > 1 && (perMachineSetup.containsKey(m) || initialTypes.containsKey(m))) {
+                throw new ModelException("Machine '" + m + "' has capacity " + capacities.get(m)
+                        + "; sequence-dependent setup times need a machine with capacity 1.");
+            }
+        }
+        Model model = new Model(List.copyOf(machines), List.copyOf(jobs), matrix, goal, mergedDowntimes(),
+                Map.copyOf(capacities), resolvePrecedences(), grid);
+        return new JobShopProblem(model, collectUnusedTypeWarnings(matrix));
     }
 
     /** Diagnostics for the model as currently declared; see {@link OptimizationProblem#warnings()}. */
@@ -187,6 +282,65 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
                 Map.copyOf(initialTypes));
 
         return matrix;
+    }
+
+    /** Resolves job ids and operation indices and rejects precedence cycles. */
+    private List<PrecedenceDef> resolvePrecedences() {
+        Map<String, JobDef> byId = new LinkedHashMap<>();
+        for (JobDef j : jobs) byId.put(j.id(), j);
+        List<PrecedenceDef> out = new ArrayList<>();
+        for (PrecedenceDef p : precedences) {
+            JobDef before = byId.get(p.beforeJob());
+            JobDef after = byId.get(p.afterJob());
+            if (before == null || after == null) {
+                throw new ModelException("precedence('" + p.beforeJob() + "', '" + p.afterJob() + "'): unknown job id '"
+                        + (before == null ? p.beforeJob() : p.afterJob()) + "'.");
+            }
+            int beforeOp = p.beforeOp() < 0 ? before.operations().size() - 1 : p.beforeOp();
+            if (beforeOp >= before.operations().size() || p.afterOp() >= after.operations().size()) {
+                throw new ModelException("precedence('" + p.beforeJob() + "', " + beforeOp + ", '" + p.afterJob() + "', "
+                        + p.afterOp() + "): operation index out of range.");
+            }
+            out.add(new PrecedenceDef(p.beforeJob(), beforeOp, p.afterJob(), p.afterOp()));
+        }
+        rejectCycles(byId, out);
+        return List.copyOf(out);
+    }
+
+    /** Depth-first search over operations, linked within jobs and by precedences. */
+    private static void rejectCycles(Map<String, JobDef> byId, List<PrecedenceDef> precedences) {
+        Map<String, List<String>> next = new LinkedHashMap<>();
+        for (JobDef j : byId.values()) {
+            for (int o = 0; o < j.operations().size(); o++) {
+                List<String> out = next.computeIfAbsent(j.id() + "#" + o, k -> new ArrayList<>());
+                if (o + 1 < j.operations().size()) out.add(j.id() + "#" + (o + 1));
+            }
+        }
+        for (PrecedenceDef p : precedences) next.get(p.beforeJob() + "#" + p.beforeOp()).add(p.afterJob() + "#" + p.afterOp());
+        Map<String, Integer> state = new LinkedHashMap<>(); // 1 = on the stack, 2 = done
+        for (String start : next.keySet()) {
+            if (state.containsKey(start)) continue;
+            Deque<Map.Entry<String, Iterator<String>>> stack = new ArrayDeque<>();
+            stack.push(Map.entry(start, next.get(start).iterator()));
+            state.put(start, 1);
+            while (!stack.isEmpty()) {
+                var top = stack.peek();
+                if (top.getValue().hasNext()) {
+                    String n = top.getValue().next();
+                    Integer st = state.get(n);
+                    if (st != null && st == 1) {
+                        throw new ModelException("precedence: the precedences form a cycle through operation '" + n + "'.");
+                    }
+                    if (st == null) {
+                        state.put(n, 1);
+                        stack.push(Map.entry(n, next.get(n).iterator()));
+                    }
+                } else {
+                    state.put(top.getKey(), 2);
+                    stack.pop();
+                }
+            }
+        }
     }
 
     /** Validates downtime machines and merges overlapping or touching windows per machine. */
@@ -259,22 +413,18 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
 
     // ── Problem + Solver ────────────────────────────────────────────────────
 
+    /** Everything a solve needs; immutable. */
+    private record Model(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal,
+                         List<DowntimeDef> downtimes, Map<String, Integer> capacities,
+                         List<PrecedenceDef> precedences, TimeGrid grid) {}
+
     private static final class JobShopProblem implements CpSatProblem<JobShopSchedule> {
 
-        private final List<String> machines;
-        private final List<JobDef> jobs;
-        private final SetupMatrix setupMatrix;
-        private final JobShopGoal goal;
-        private final List<DowntimeDef> downtimes;
+        private final Model model;
         private final List<String> warnings;
 
-        JobShopProblem(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal,
-                       List<DowntimeDef> downtimes, List<String> warnings) {
-            this.machines = machines;
-            this.jobs = jobs;
-            this.setupMatrix = setupMatrix;
-            this.goal = goal;
-            this.downtimes = downtimes;
+        JobShopProblem(Model model, List<String> warnings) {
+            this.model = model;
             this.warnings = warnings;
         }
 
@@ -285,30 +435,25 @@ public final class JobShopBuilder implements CpSatProblem<JobShopSchedule> {
 
         @Override
         public CpSatSolver<JobShopSchedule> solver() {
-            return new JobShopSolver(machines, jobs, setupMatrix, goal, downtimes);
+            return new JobShopSolver(model);
         }
     }
 
     private static final class JobShopSolver extends AbstractCpSatSolver<JobShopSchedule> {
 
-        private final List<String> machines;
-        private final List<JobDef> jobs;
-        private final SetupMatrix setupMatrix;
-        private final JobShopGoal goal;
-        private final List<DowntimeDef> downtimes;
+        private final Model model;
 
-        JobShopSolver(List<String> machines, List<JobDef> jobs, SetupMatrix setupMatrix, JobShopGoal goal,
-                      List<DowntimeDef> downtimes) {
-            this.machines = machines;
-            this.jobs = jobs;
-            this.setupMatrix = setupMatrix;
-            this.goal = goal;
-            this.downtimes = downtimes;
+        JobShopSolver(Model model) {
+            this.model = model;
         }
 
         @Override
         protected JobShopSchedule doSolve() {
-            return new CpSatJobShopSolver(machines, jobs, setupMatrix, goal, downtimes, params, listener, warmStart).solve();
+            TimeGrid grid = model.grid();
+            return new CpSatJobShopSolver(model.machines(), model.jobs(), model.setupMatrix(), model.goal(),
+                    model.downtimes(), model.capacities(), model.precedences(),
+                    grid == null ? null : grid.origin(), grid == null ? null : grid.unit(),
+                    params, listener, warmStart).solve();
         }
     }
 }

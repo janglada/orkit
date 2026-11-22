@@ -3,6 +3,7 @@ package io.github.janglada.orkit.scheduling.internal;
 import com.google.ortools.sat.*;
 import io.github.janglada.orkit.ModelException;
 import io.github.janglada.orkit.SolveStatus;
+import io.github.janglada.orkit.internal.ConstraintGroups;
 import io.github.janglada.orkit.internal.CpSatParams;
 import java.util.function.Consumer;
 import io.github.janglada.orkit.scheduling.*;
@@ -29,6 +30,7 @@ public final class CpSatSchedulingSolver {
     private final CpSatParams params;
     private final Consumer<EmployeeRoster> listener;
     private final EmployeeRoster warmStart;
+    private ConstraintGroups groups = ConstraintGroups.off();
 
 
     /** Creates a solver bound to the given scheduling model description; inputs are defensively copied. */
@@ -74,6 +76,7 @@ public final class CpSatSchedulingSolver {
         int S = shifts.size();
 
         CpModel model = new CpModel();
+        groups = params.groups(model);
 
         // x[e][s] = 1 if employee e is assigned to shift s
         BoolVar[][] x = new BoolVar[E][S];
@@ -98,13 +101,39 @@ public final class CpSatSchedulingSolver {
         }
 
         // Availability and skill: fix impossible assignments to 0.
+        boolean[][] eligible = new boolean[E][S];
         for (int e = 0; e < E; e++) {
             EmployeeDef emp = employees.get(e);
             for (int s = 0; s < S; s++) {
                 ShiftDef shift = shifts.get(s);
-                if (!emp.isAvailableOn(shiftDate[s].getDayOfWeek(), shiftDate[s]) || !emp.hasSkill(shift.requiredSkill())) {
-                    model.addEquality(x[e][s], 0L);
+                eligible[e][s] = emp.isAvailableOn(shiftDate[s].getDayOfWeek(), shiftDate[s])
+                        && emp.hasSkills(shift.requiredSkills());
+                if (!eligible[e][s]) model.addEquality(x[e][s], 0L);
+            }
+        }
+
+        // Role mix: role[e][s][r] means employee e fills role r on shift s; one role at most per assignee.
+        BoolVar[][][] role = new BoolVar[E][S][];
+        for (int s = 0; s < S; s++) {
+            List<RoleDef> roles = shifts.get(s).roles();
+            if (roles.isEmpty()) continue;
+            LinearExprBuilder[] filled = new LinearExprBuilder[roles.size()];
+            for (int r = 0; r < roles.size(); r++) filled[r] = LinearExpr.newBuilder();
+            for (int e = 0; e < E; e++) {
+                if (!eligible[e][s]) continue;
+                role[e][s] = new BoolVar[roles.size()];
+                LinearExprBuilder held = LinearExpr.newBuilder();
+                for (int r = 0; r < roles.size(); r++) {
+                    if (!employees.get(e).skills().contains(roles.get(r).skill())) continue;
+                    role[e][s][r] = model.newBoolVar("role_" + e + "_" + s + "_" + r);
+                    held.add(role[e][s][r]);
+                    filled[r].add(role[e][s][r]);
                 }
+                model.addLessOrEqual(held, x[e][s]);
+            }
+            for (int r = 0; r < roles.size(); r++) {
+                groups.guard(model.addEquality(filled[r], roles.get(r).count()),
+                        roles.get(r).count() + " x role '" + roles.get(r).skill() + "' on " + describe(shifts.get(s)));
             }
         }
 
@@ -118,7 +147,8 @@ public final class CpSatSchedulingSolver {
             Integer e = empIndex.get(lock.employeeId());
             Integer s = shiftIndex.get(lock.shiftInstanceId());
             if (e == null || s == null) continue;
-            model.addEquality(x[e][s], lock.assign() ? 1L : 0L);
+            groups.guard(model.addEquality(x[e][s], lock.assign() ? 1L : 0L),
+                    (lock.assign() ? "assign '" : "forbid '") + lock.employeeId() + "' on " + describe(shifts.get(s)));
         }
 
         // Staffing requirements: for each shift, sum of qualified employees == needs, or within
@@ -128,16 +158,15 @@ public final class CpSatSchedulingSolver {
             ShiftDef shift = shifts.get(s);
             LinearExprBuilder expr = LinearExpr.newBuilder();
             for (int e = 0; e < E; e++) {
-                EmployeeDef emp = employees.get(e);
-                if (emp.isAvailableOn(shiftDate[s].getDayOfWeek(), shiftDate[s]) && emp.hasSkill(shift.requiredSkill())) {
-                    expr.add(x[e][s]);
-                }
+                if (eligible[e][s]) expr.add(x[e][s]);
             }
             if (!shift.isSoftStaffed()) {
-                model.addEquality(expr, shift.needsCount());
+                groups.guard(model.addEquality(expr, shift.needsCount()),
+                        "staffing: " + describe(shift) + " needs " + shift.needsCount() + " qualified employee(s)");
             } else {
                 IntVar shortfall = model.newIntVar(0, shift.needsCount() - shift.minCount(), "short_" + s);
-                model.addLinearConstraint(expr, shift.minCount(), shift.needsCount());
+                groups.guard(model.addLinearConstraint(expr, shift.minCount(), shift.needsCount()),
+                        "staffing: " + describe(shift) + " needs at least " + shift.minCount() + " qualified employee(s)");
                 model.addEquality(LinearExpr.newBuilder().add(expr.build()).add(shortfall).build(), shift.needsCount());
                 shortfalls.add(shortfall);
             }
@@ -145,6 +174,7 @@ public final class CpSatSchedulingSolver {
 
         // Max hours per week: rolling 7-day window (see applyMaxHoursPerWeek)
         applyMaxHoursPerWeek(model, x, E, S, shiftDayIdx);
+        applyMinHoursPerWeek(model, x, E, shiftDayIdx);
 
         // Hard rules
         for (Rule rule : rules) {
@@ -188,6 +218,7 @@ public final class CpSatSchedulingSolver {
                     understaffingWeighted = true;
                     hasObjective |= !shortfalls.isEmpty();
                 }
+                case SoftGoal.PenalizeContractDeviation g -> { } // applied below with the contract hours
             }
         }
         // A soft-staffed shift with no declared weight still needs an incentive to fill up,
@@ -196,6 +227,13 @@ public final class CpSatSchedulingSolver {
             for (IntVar shortfall : shortfalls) objExpr.addTerm(shortfall, SoftGoal.DEFAULT_UNDERSTAFFING_WEIGHT);
             hasObjective = true;
         }
+        // Contracted hours: every minute away from the contract in a full week costs the declared
+        // weight, or the default one when the goal is absent.
+        long contractWeight = softGoals.stream()
+                .filter(g -> g instanceof SoftGoal.PenalizeContractDeviation)
+                .mapToLong(g -> ((SoftGoal.PenalizeContractDeviation) g).weight())
+                .findFirst().orElse(SoftGoal.DEFAULT_CONTRACT_DEVIATION_WEIGHT);
+        hasObjective |= applyContractHours(model, x, E, shiftDayIdx, objExpr, contractWeight);
 
         if (hasObjective) {
             model.minimize(objExpr);
@@ -204,7 +242,7 @@ public final class CpSatSchedulingSolver {
         final boolean objectiveModeled = hasObjective;
         if (warmStart != null) applyWarmStart(model, x);
 
-        CpSatParams.Extractor<EmployeeRoster> extract = (v, status, runtime) -> {
+        CpSatParams.Extractor<EmployeeRoster> extract = (v, status, runtime, diag) -> {
             boolean feasible = status == SolveStatus.OPTIMAL || status == SolveStatus.FEASIBLE;
 
             List<io.github.janglada.orkit.scheduling.ShiftAssignment> assignments = new ArrayList<>();
@@ -215,8 +253,17 @@ public final class CpSatSchedulingSolver {
                         if (v.booleanValue(x[e][s])) {
                             ShiftDef shift = shifts.get(s);
                             LocalDate date = shiftDate[s];
+                            String filledRole = null;
+                            if (role[e][s] != null) {
+                                for (int r = 0; r < role[e][s].length && filledRole == null; r++) {
+                                    if (role[e][s][r] != null && v.booleanValue(role[e][s][r])) {
+                                        filledRole = shift.roles().get(r).skill();
+                                    }
+                                }
+                            }
+                            double cost = emp.costPerHour() * shift.durationMinutes() / 60.0;
                             assignments.add(new io.github.janglada.orkit.scheduling.ShiftAssignment(
-                                    emp.id(), shift.templateId(), date, shift.from(), shift.to()));
+                                    emp.id(), shift.templateId(), date, shift.from(), shift.to(), filledRole, cost));
                         }
                     }
                 }
@@ -226,9 +273,14 @@ public final class CpSatSchedulingSolver {
                     ? OptionalDouble.of(v.objectiveValue())
                     : OptionalDouble.empty();
 
-            return new EmployeeRoster(status, objectiveValue, runtime, assignments);
+            return new EmployeeRoster(status, objectiveValue, runtime, assignments, diag);
         };
         return params.solve(model, extract, listener);
+    }
+
+    /** A shift instance as users declared it: {@code 'id' on date}. */
+    private static String describe(ShiftDef shift) {
+        return "shift '" + shift.templateId() + "' on " + shift.date();
     }
 
     /** Hints every (employee, shift) literal from a previous roster: 1 where it was assigned, 0 elsewhere. */
@@ -317,9 +369,67 @@ public final class CpSatSchedulingSolver {
                 for (int d = start; d < start + windowSize; d++) {
                     for (int s : byIndex.get(d)) window.addTerm(x[e][s], shifts.get(s).durationMinutes());
                 }
-                model.addLinearConstraint(window, 0, capMinutes);
+                groups.guard(model.addLinearConstraint(window, 0, capMinutes),
+                        "maxHoursPerWeek(" + emp.maxHoursPerWeek() + ") of '" + emp.id() + "'");
             }
         }
+    }
+
+    /** Shift indices grouped by full week (days 0-6, 7-13, ...); a trailing partial week is dropped. */
+    private List<List<Integer>> fullWeeks(int S, int[] shiftDayIdx) {
+        List<List<Integer>> weeks = new ArrayList<>();
+        for (int w = 0; w < horizonDays / 7; w++) weeks.add(new ArrayList<>());
+        for (int s = 0; s < S; s++) {
+            int w = shiftDayIdx[s] / 7;
+            if (w < weeks.size()) weeks.get(w).add(s);
+        }
+        return weeks;
+    }
+
+    /** Minutes employee e works in the given shifts. */
+    private LinearExpr weekMinutes(BoolVar[][] x, int e, List<Integer> week) {
+        LinearExprBuilder minutes = LinearExpr.newBuilder();
+        for (int s : week) minutes.addTerm(x[e][s], shifts.get(s).durationMinutes());
+        return minutes.build();
+    }
+
+    /** Each employee with a weekly minimum works at least that many hours in every full week. */
+    private void applyMinHoursPerWeek(CpModel model, BoolVar[][] x, int E, int[] shiftDayIdx) {
+        List<List<Integer>> weeks = fullWeeks(shifts.size(), shiftDayIdx);
+        for (int e = 0; e < E; e++) {
+            int min = employees.get(e).minHoursPerWeek();
+            if (min <= 0) continue;
+            for (int w = 0; w < weeks.size(); w++) {
+                groups.guard(model.addGreaterOrEqual(weekMinutes(x, e, weeks.get(w)), min * 60L),
+                        "minHoursPerWeek(" + min + ") of '" + employees.get(e).id() + "' in week " + (w + 1));
+            }
+        }
+    }
+
+    /**
+     * Adds {@code weight * |minutes - contract|} per employee with contract hours and full week.
+     * @return whether any term was added
+     */
+    private boolean applyContractHours(CpModel model, BoolVar[][] x, int E, int[] shiftDayIdx,
+                                       LinearExprBuilder objExpr, long weight) {
+        List<List<Integer>> weeks = fullWeeks(shifts.size(), shiftDayIdx);
+        boolean added = false;
+        for (int e = 0; e < E; e++) {
+            int contract = employees.get(e).contractHoursPerWeek();
+            if (contract <= 0) continue;
+            for (int w = 0; w < weeks.size(); w++) {
+                long target = contract * 60L;
+                long most = Math.max(target, weeks.get(w).stream().mapToLong(s -> shifts.get(s).durationMinutes()).sum());
+                IntVar deviation = model.newIntVar(0, most, "dev_" + e + "_" + w);
+                LinearExpr minutes = weekMinutes(x, e, weeks.get(w));
+                // deviation >= minutes - target and deviation >= target - minutes
+                model.addGreaterOrEqual(LinearExpr.newBuilder().add(deviation).addTerm(minutes, -1).build(), -target);
+                model.addGreaterOrEqual(LinearExpr.newBuilder().add(deviation).add(minutes).build(), target);
+                objExpr.addTerm(deviation, weight);
+                added = true;
+            }
+        }
+        return added;
     }
 
     private void applyOneShiftPerDay(CpModel model, BoolVar[][] x, int E, int S, int[] shiftDayIdx) {
@@ -334,7 +444,8 @@ public final class CpSatSchedulingSolver {
                 if (dayShifts.size() > 1) {
                     LinearExprBuilder sum = LinearExpr.newBuilder();
                     for (int s : dayShifts) sum.add(x[e][s]);
-                    model.addLinearConstraint(sum, 0, 1);
+                    groups.guard(model.addLinearConstraint(sum, 0, 1),
+                            "oneShiftPerEmployeePerDay for '" + employees.get(e).id() + "'");
                 }
             }
         }
@@ -359,8 +470,9 @@ public final class CpSatSchedulingSolver {
                     boolean tooClose = (gapAB >= 0 && gapAB < minMinutes)
                                     || (gapBA >= 0 && gapBA < minMinutes);
                     if (tooClose) {
-                        model.addLinearConstraint(
-                                LinearExpr.newBuilder().add(x[e][s1]).add(x[e][s2]).build(), 0, 1);
+                        groups.guard(model.addLinearConstraint(
+                                LinearExpr.newBuilder().add(x[e][s1]).add(x[e][s2]).build(), 0, 1),
+                                "minRestBetweenShifts(" + rule.minRest() + ") for '" + employees.get(e).id() + "'");
                     }
                 }
             }
@@ -384,7 +496,8 @@ public final class CpSatSchedulingSolver {
                 for (int d = start; d < start + windowSize; d++) {
                     for (int s : byIndex.get(d)) window.add(x[e][s]);
                 }
-                model.addLinearConstraint(window, 0, maxDays);
+                groups.guard(model.addLinearConstraint(window, 0, maxDays),
+                        "maxConsecutiveWorkDays(" + maxDays + ") for '" + employees.get(e).id() + "'");
             }
         }
     }
@@ -407,7 +520,8 @@ public final class CpSatSchedulingSolver {
                 for (int d = start; d < start + windowSize; d++) {
                     for (int s : byIndex.get(d)) window.add(x[e][s]);
                 }
-                model.addLinearConstraint(window, 0, maxShifts);
+                groups.guard(model.addLinearConstraint(window, 0, maxShifts),
+                        "maxShiftsPerWeek(" + maxShifts + ") for '" + employees.get(e).id() + "'");
             }
         }
     }
@@ -424,8 +538,10 @@ public final class CpSatSchedulingSolver {
                 if (!rule.toCategory().equals(shifts.get(s2).category())) continue;
                 if (shiftDayIdx[s2] != shiftDayIdx[s1] + 1) continue;
                 for (int e = 0; e < E; e++) {
-                    model.addLinearConstraint(
-                            LinearExpr.newBuilder().add(x[e][s1]).add(x[e][s2]).build(), 0, 1);
+                    groups.guard(model.addLinearConstraint(
+                            LinearExpr.newBuilder().add(x[e][s1]).add(x[e][s2]).build(), 0, 1),
+                            "forbidSequence(" + rule.fromCategory() + ", " + rule.toCategory() + ") for '"
+                                    + employees.get(e).id() + "'");
                 }
             }
         }
@@ -449,7 +565,8 @@ public final class CpSatSchedulingSolver {
                 for (int d = start; d < start + windowSize; d++) {
                     for (int s : nightByIndex.get(d)) window.add(x[e][s]);
                 }
-                model.addLinearConstraint(window, 0, maxNights);
+                groups.guard(model.addLinearConstraint(window, 0, maxNights),
+                        "maxConsecutiveNightShifts(" + maxNights + ") for '" + employees.get(e).id() + "'");
             }
         }
     }

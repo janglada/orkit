@@ -2,6 +2,8 @@ package io.github.janglada.orkit.scheduling.internal;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Immutable description of one shift instance on a concrete date, produced by expanding a
@@ -15,7 +17,8 @@ import java.time.LocalTime;
  * @param to            shift end time; may be before {@code from} to model an overnight shift
  * @param needsCount    target number of qualified employees
  * @param minCount      hard minimum number of employees ({@code == needsCount} for hard staffing)
- * @param requiredSkill skill employees must have, or null for an unskilled shift
+ * @param requiredSkills skills every assigned employee must have; empty for an unskilled shift
+ * @param roles         role mix: how many assignees fill each skill role (may be empty)
  * @param category      free-form category used by sequence rules, or null
  */
 public record ShiftDef(
@@ -26,9 +29,16 @@ public record ShiftDef(
         LocalTime to,
         int needsCount,
         int minCount,
-        String requiredSkill,
+        Set<String> requiredSkills,
+        List<RoleDef> roles,
         String category
 ) {
+    /** Copies the skill set and the role list. */
+    public ShiftDef {
+        requiredSkills = Set.copyOf(requiredSkills);
+        roles = List.copyOf(roles);
+    }
+
     /** Duration in whole minutes. Handles overnight shifts where {@code to} is before {@code from}. */
     public int durationMinutes() {
         int start = from.toSecondOfDay() / 60;
