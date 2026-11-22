@@ -13,10 +13,10 @@ for every supported platform, and orkit loads the right one the first time you c
 builder. To ship a smaller application for one platform, exclude the other
 `ortools-<platform>` artifacts from `ortools-java`.
 
-!!! note "JDK 24 and newer"
-    OR-Tools loads its JNI library with `System.loadLibrary`, which recent JDKs flag as a
-    restricted method. Run your application with `--enable-native-access=ALL-UNNAMED` to
-    silence the warning; later JDKs will require it.
+!!! tip "Recommended JVM flag: `--enable-native-access=ALL-UNNAMED`"
+    On JDK 24 and newer it silences a warning when OR-Tools loads its native library, and
+    later JDKs will require it. JDK 21 accepts it too, so it is safe to add whatever JDK you
+    run. The build already passes it to the tests.
 
 ## Installation
 

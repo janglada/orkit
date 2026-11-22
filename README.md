@@ -27,9 +27,9 @@ Not yet published to Maven Central. Install it locally with `mvn install`, then 
 
 ## Requirements
 
-- **Java 21+** and **Maven 3.6.3+** (enforced by the build). CI runs on Linux, macOS and Windows with JDK 21, and on Linux with JDK 25.
+- **Java 21 or newer** and **Maven 3.6.3+** (enforced by the build). CI runs on Linux, macOS and Windows with JDK 21, and on Linux with JDK 25.
 - **Native libraries need no setup.** `ortools-java` depends on the OR-Tools native libraries for Linux (x86-64, arm64), macOS (x86-64, arm64) and Windows (x86-64), and `com.google.ortools.Loader` extracts the right one at startup. To ship a smaller application for one platform, exclude the other `ortools-<platform>` artifacts from `ortools-java`.
-- **JDK 24+:** OR-Tools loads its JNI library with `System.loadLibrary`, which the JDK now flags as restricted. Run your application with `--enable-native-access=ALL-UNNAMED` to silence the warning (later JDKs will require it). The build already passes it to the tests.
+- **Recommended JVM flag:** `--enable-native-access=ALL-UNNAMED`. On JDK 24 and newer it silences a warning when OR-Tools loads its native library, and later JDKs will require it. JDK 21 accepts it too, so it is safe to add whatever JDK you run. The build already passes it to the tests.
 
 ## Build & test
 
