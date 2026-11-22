@@ -3,7 +3,7 @@ hide:
   - navigation
 ---
 
-# orkit
+# ![orkit](assets/logo.svg){ width="288" } { #orkit }
 
 **A fluent Java 21+ API for operations research on top of Google OR-Tools 9.15.**
 
