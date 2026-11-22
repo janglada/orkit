@@ -1,0 +1,99 @@
+site_name: orkit
+site_description: Fluent Java API for job-shop, shift scheduling, vehicle routing, knapsack, packing, booking and cutting-stock problems on top of Google OR-Tools.
+repo_url: https://github.com/janglada/orkit
+repo_name: janglada/orkit
+edit_uri: edit/master/docs/
+copyright: Licensed under the Apache License, Version 2.0
+
+theme:
+  name: material
+  language: en
+  font: false          # system fonts: no external requests, works offline
+  icon:
+    logo: material/cube-scan
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+
+nav:
+  - Home: index.md
+  - Guide:
+      - Getting started: guide/getting-started.md
+      - Core concepts: guide/concepts.md
+      - Solver knobs: guide/solver-knobs.md
+      - Diagnostics: guide/diagnostics.md
+      - Modeling notes: guide/modeling-notes.md
+  - Domains:
+      - domains/index.md
+      - Job-shop scheduling: domains/jobshop.md
+      - Shift scheduling: domains/scheduling.md
+      - Vehicle routing: domains/routing.md
+      - Multiple knapsack: domains/knapsack.md
+      - Container packing: domains/packing.md
+      - Resource booking: domains/booking.md
+      - Cutting stock: domains/cutting.md
+  - Examples: examples.md
+  - API reference: api.md
+  - Changelog: changelog.md
+
+# Build tooling lives next to the pages but is not part of the site.
+exclude_docs: |
+  build.sh
+  requirements.txt
+
+# Third-party notices shipped with the Javadoc; rendered, but not part of the navigation.
+not_in_nav: |
+  /javadoc/legal/*.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+  - offline            # the built site also works when opened from the file system
+  - privacy            # downloads the few external assets at build time and serves them locally

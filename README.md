@@ -2,6 +2,16 @@
 
 A fluent Java 21+ DSL over [Google OR-Tools](https://developers.google.com/optimization) 9.15, covering seven optimization domains: **job-shop scheduling**, **employee shift scheduling**, **vehicle routing**, **multiple knapsack**, **container loading (3D bin packing)**, **resource booking (appointment scheduling)**, and **cutting stock**. Each domain has a small builder API that mirrors how you would describe the problem in prose; the DSL hides the CP-SAT / routing modeling details and returns a typed solution object.
 
+## Documentation
+
+A full documentation site (guide, one page per domain, examples and the Javadoc API reference)
+is built from `docs/` with MkDocs Material:
+
+```bash
+docs/build.sh          # writes site/index.html
+docs/build.sh serve    # live preview on http://127.0.0.1:8000
+```
+
 ## Installation
 
 Not yet published to Maven Central. Install it locally with `mvn install`, then depend on:
