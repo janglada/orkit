@@ -85,6 +85,9 @@ Javadoc jars with doclint on. `mvn test` alone is faster while iterating.
 
 ## Building this documentation
 
+The published site lives at <https://janglada.github.io/orkit/>; the `Docs` GitHub Actions
+workflow rebuilds it and pushes it to the `gh-pages` branch on every relevant push to `master`.
+
 The site is built with [MkDocs](https://www.mkdocs.org/) and the
 [Material](https://squidfunk.github.io/mkdocs-material/) theme, and embeds the generated
 Javadoc as its API reference.
@@ -96,5 +99,6 @@ docs/build.sh serve    # live preview on http://127.0.0.1:8000
 
 The script creates a virtual environment with the pinned versions in `docs/requirements.txt`,
 generates the Javadoc for the public packages, and runs `mkdocs build --strict`. The first
-build downloads two small scripts the theme needs and bundles them, so the built site makes no
-external requests and also works when opened straight from the file system.
+build downloads two small scripts the theme needs and bundles them, so the built site also
+works when opened straight from the file system. Its only external request is the theme's
+lookup of the repository's stars and latest release on the GitHub API.

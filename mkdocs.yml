@@ -1,5 +1,6 @@
 site_name: orkit
 site_description: Fluent Java API for job-shop, shift scheduling, vehicle routing, knapsack, packing, booking and cutting-stock problems on top of Google OR-Tools.
+site_url: https://janglada.github.io/orkit/
 repo_url: https://github.com/janglada/orkit
 repo_name: janglada/orkit
 edit_uri: edit/master/docs/

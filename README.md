@@ -4,8 +4,9 @@ A fluent Java 21+ DSL over [Google OR-Tools](https://developers.google.com/optim
 
 ## Documentation
 
-A full documentation site (guide, one page per domain, examples and the Javadoc API reference)
-is built from `docs/` with MkDocs Material:
+**https://janglada.github.io/orkit/**: guide, one page per domain, examples and the Javadoc API
+reference. The site is built from `docs/` with MkDocs Material and republished by the `Docs`
+workflow on every push to `master`. To build it locally:
 
 ```bash
 docs/build.sh          # writes site/index.html
