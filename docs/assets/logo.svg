@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 80" width="192" height="80" role="img" aria-label="orkit">
+  <title>orkit</title>
+  <style>
+    .ink { stroke: #3F51B5; fill: none } .ink-fill { fill: #3F51B5 }
+    .accent { stroke: #009688; fill: none } .accent-fill { fill: #009688 }
+    @media (prefers-color-scheme: dark) {
+      .ink { stroke: #8C9EFF } .ink-fill { fill: #8C9EFF }
+      .accent { stroke: #4DB6AC } .accent-fill { fill: #4DB6AC }
+    }
+  </style>
+  <!-- A closed route: a ring with three stops; the highlighted leg leaves the teal stop. -->
+  <mask id="orkit-stops">
+      <rect x="-8" y="10" width="80" height="80" fill="white"/>
+      <circle cx="50.39" cy="34.57" r="8.0" fill="black"/>
+      <circle cx="36.17" cy="73.64" r="8.0" fill="black"/>
+      <circle cx="9.45" cy="41.79" r="8.0" fill="black"/>
+  </mask>
+  <g mask="url(#orkit-stops)" stroke-width="6">
+    <circle class="ink" cx="32" cy="50" r="24"/>
+    <path class="accent" d="M50.39 34.57A24 24 0 0 1 36.17 73.64"/>
+  </g>
+  <circle class="accent-fill" cx="50.39" cy="34.57" r="5.5"/>
+  <circle class="ink-fill" cx="36.17" cy="73.64" r="5.5"/>
+  <circle class="ink-fill" cx="9.45" cy="41.79" r="5.5"/>
+  <!-- "rkit", monoline at the ring's stroke width. -->
+  <g class="ink" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M72 74V44C72 32 80 26 92 26"/>
+    <path d="M106 6V74M130 26L106 52M116 41L132 74"/>
+    <path d="M148 26V74"/>
+    <path d="M172 8V62C172 70 176 74 184 74H186M161 26H185"/>
+  </g>
+  <circle class="ink-fill" cx="148" cy="9" r="4.5"/>
+</svg>

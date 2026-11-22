@@ -10,8 +10,9 @@ theme:
   name: material
   language: en
   font: false          # system fonts: no external requests, works offline
+  logo: assets/logo-mark-white.svg
+  favicon: assets/favicon.svg
   icon:
-    logo: material/cube-scan
     repo: fontawesome/brands/github
   palette:
     - media: "(prefers-color-scheme: light)"
