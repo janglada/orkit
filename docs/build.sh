@@ -6,8 +6,18 @@ cd "$(dirname "$0")/.."
 
 VENV="${DOCS_VENV:-.venv-docs}"
 if [ ! -x "$VENV/bin/mkdocs" ]; then
-    python3 -m venv "$VENV"
-    "$VENV/bin/pip" install --quiet -r docs/requirements.txt
+    # --clear rebuilds an environment left half-made by an earlier failed run.
+    if command -v uv >/dev/null 2>&1; then
+        uv venv --quiet --clear "$VENV"
+        uv pip install --quiet --python "$VENV/bin/python" -r docs/requirements.txt
+    elif python3 -m venv --clear "$VENV" 2>/dev/null; then
+        "$VENV/bin/pip" install --quiet -r docs/requirements.txt
+    else
+        echo "Cannot create a Python virtual environment in $VENV." >&2
+        echo "Install uv (https://docs.astral.sh/uv/) or your distribution's python3-venv package," >&2
+        echo "or point DOCS_VENV at an environment that already has mkdocs-material." >&2
+        exit 1
+    fi
 fi
 
 # API reference: public packages only; *.internal is implementation detail.
