@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="orkit">
+  <title>orkit</title>
+  <style>
+    .ink { stroke: #FFFFFF; fill: none } .ink-fill { fill: #FFFFFF }
+    .accent { stroke: #A7FFEB; fill: none } .accent-fill { fill: #A7FFEB }
+  </style>
+  <!-- A closed route: a ring with three stops; the highlighted leg leaves the teal stop. -->
+  <mask id="orkit-stops">
+      <rect x="-8" y="-8" width="80" height="80" fill="white"/>
+      <circle cx="50.39" cy="16.57" r="8.0" fill="black"/>
+      <circle cx="36.17" cy="55.64" r="8.0" fill="black"/>
+      <circle cx="9.45" cy="23.79" r="8.0" fill="black"/>
+  </mask>
+  <g mask="url(#orkit-stops)" stroke-width="6">
+    <circle class="ink" cx="32" cy="32" r="24"/>
+    <path class="accent" d="M50.39 16.57A24 24 0 0 1 36.17 55.64"/>
+  </g>
+  <circle class="accent-fill" cx="50.39" cy="16.57" r="5.5"/>
+  <circle class="ink-fill" cx="36.17" cy="55.64" r="5.5"/>
+  <circle class="ink-fill" cx="9.45" cy="23.79" r="5.5"/>
+</svg>

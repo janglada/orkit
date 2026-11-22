@@ -1,0 +1,2486 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Fluent Java API for job-shop, shift scheduling, vehicle routing, knapsack, packing, booking and cutting-stock problems on top of Google OR-Tools.">
+      
+      
+      
+        <link rel="canonical" href="https://janglada.github.io/orkit/domains/routing.html">
+      
+      
+        <link rel="prev" href="scheduling.html">
+      
+      
+        <link rel="next" href="knapsack.html">
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+    
+    
+      
+        <title>Vehicle routing - orkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+        <script src="../assets/external/unpkg.com/iframe-worker/shim.js"></script>
+      
+    
+    
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#vehicle-routing" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../index.html" title="orkit" class="md-header__button md-logo" aria-label="orkit" data-md-component="logo">
+      
+  <img src="../assets/logo-mark-white.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            orkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Vehicle routing
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/janglada/orkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janglada/orkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../index.html" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide/getting-started.html" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="index.html" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Domains
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../examples.html" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Examples
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api.html" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog.html" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../index.html" title="orkit" class="md-nav__button md-logo" aria-label="orkit" data-md-component="logo">
+      
+  <img src="../assets/logo-mark-white.svg" alt="logo">
+
+    </a>
+    orkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/janglada/orkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janglada/orkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Guide
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Guide
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/getting-started.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/concepts.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Core concepts
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/solver-knobs.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Solver settings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/diagnostics.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Diagnostics
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/modeling-notes.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Modeling notes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/glossary.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossary
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="index.html" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Domains
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Domains
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="jobshop.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Job-shop scheduling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scheduling.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Shift scheduling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Vehicle routing
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="routing.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Vehicle routing
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      Quick start
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reading the plan
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-fleet-of-identical-vehicles" class="md-nav__link">
+    <span class="md-ellipsis">
+      A fleet of identical vehicles
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals-what-best-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      Goals: what "best" means
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#distances-and-travel-times" class="md-nav__link">
+    <span class="md-ellipsis">
+      Distances and travel times
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Distances and travel times">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#straight-line-distances" class="md-nav__link">
+    <span class="md-ellipsis">
+      Straight-line distances
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#your-own-distance-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      Your own distance table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#your-own-travel-times-too" class="md-nav__link">
+    <span class="md-ellipsis">
+      Your own travel times too
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#several-depots" class="md-nav__link">
+    <span class="md-ellipsis">
+      Several depots
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capacity" class="md-nav__link">
+    <span class="md-ellipsis">
+      Capacity
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Capacity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#one-kind-of-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      One kind of load
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#several-kinds-of-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      Several kinds of load
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-limit-on-distance" class="md-nav__link">
+    <span class="md-ellipsis">
+      A limit on distance
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#time" class="md-nav__link">
+    <span class="md-ellipsis">
+      Time
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Costs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-stops" class="md-nav__link">
+    <span class="md-ellipsis">
+      Optional stops
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      Skills
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pickup-and-delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pickup and delivery
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tuning-the-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tuning the search
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limits
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reference
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#routingbuilder" class="md-nav__link">
+    <span class="md-ellipsis">
+      RoutingBuilder
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vehicleconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      VehicleConfig
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stopconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      StopConfig
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#routingplan" class="md-nav__link">
+    <span class="md-ellipsis">
+      RoutingPlan
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#route" class="md-nav__link">
+    <span class="md-ellipsis">
+      Route
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#visit" class="md-nav__link">
+    <span class="md-ellipsis">
+      Visit
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="knapsack.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Multiple knapsack
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="packing.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Container packing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="booking.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Resource booking
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="cutting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Cutting stock
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Examples
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    API reference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Changelog
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      Quick start
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reading the plan
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-fleet-of-identical-vehicles" class="md-nav__link">
+    <span class="md-ellipsis">
+      A fleet of identical vehicles
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals-what-best-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      Goals: what "best" means
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#distances-and-travel-times" class="md-nav__link">
+    <span class="md-ellipsis">
+      Distances and travel times
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Distances and travel times">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#straight-line-distances" class="md-nav__link">
+    <span class="md-ellipsis">
+      Straight-line distances
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#your-own-distance-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      Your own distance table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#your-own-travel-times-too" class="md-nav__link">
+    <span class="md-ellipsis">
+      Your own travel times too
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#several-depots" class="md-nav__link">
+    <span class="md-ellipsis">
+      Several depots
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capacity" class="md-nav__link">
+    <span class="md-ellipsis">
+      Capacity
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Capacity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#one-kind-of-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      One kind of load
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#several-kinds-of-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      Several kinds of load
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-limit-on-distance" class="md-nav__link">
+    <span class="md-ellipsis">
+      A limit on distance
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#time" class="md-nav__link">
+    <span class="md-ellipsis">
+      Time
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Costs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-stops" class="md-nav__link">
+    <span class="md-ellipsis">
+      Optional stops
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      Skills
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pickup-and-delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pickup and delivery
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tuning-the-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tuning the search
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limits
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reference
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#routingbuilder" class="md-nav__link">
+    <span class="md-ellipsis">
+      RoutingBuilder
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vehicleconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      VehicleConfig
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stopconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      StopConfig
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#routingplan" class="md-nav__link">
+    <span class="md-ellipsis">
+      RoutingPlan
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#route" class="md-nav__link">
+    <span class="md-ellipsis">
+      Route
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#visit" class="md-nav__link">
+    <span class="md-ellipsis">
+      Visit
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="vehicle-routing">Vehicle routing<a class="headerlink" href="#vehicle-routing" title="Permanent link">&para;</a></h1>
+<p><strong>The problem in one sentence:</strong> your vehicles must visit a set of places, and you want to
+know which vehicle goes where, and in what order, to drive as little as possible.</p>
+<p>A few words used on this page:</p>
+<ul>
+<li>A <strong>depot</strong> is where vehicles start and end their day.</li>
+<li>A <strong>stop</strong> is a place to visit: a customer, a shop, a pickup point.</li>
+<li>A <strong>route</strong> is the ordered list of stops that one vehicle visits.</li>
+<li>A stop's <strong>demand</strong> is how much room it takes in the vehicle, and a vehicle's <strong>capacity</strong>
+  is how much it can carry.</li>
+</ul>
+<p>Package <code>io.github.janglada.orkit.routing</code> · start with <code>Optimize.vehicleRouting()</code> · result <code>RoutingPlan</code></p>
+<div class="admonition info">
+<p class="admonition-title">Routing plans are very good, not proven best</p>
+<p>Routing uses a different engine from the other domains. It builds routes quickly and
+keeps improving them, but it does not prove that no better plan exists. The normal
+status of a successful routing solve is therefore <code>FEASIBLE</code>, not <code>OPTIMAL</code>.</p>
+</div>
+<h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<p>One van leaves the depot at 8:00 and visits three customers. Customer A only accepts
+deliveries from 9:00 to 11:00, and unloading at customer B takes 10 minutes.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">io.github.janglada.orkit.Optimize</span><span class="p">;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">io.github.janglada.orkit.routing.*</span><span class="p">;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">java.time.Duration</span><span class="p">;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">java.time.LocalTime</span><span class="p">;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span><span class="w">                        </span><span class="c1">// latitude, longitude</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van-1"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="mi">20</span><span class="p">).</span><span class="na">availableFrom</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)))</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Cust-A"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.16</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">                </span><span class="p">.</span><span class="na">openFrom</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">9</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)).</span><span class="na">closeAt</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">11</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)))</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Cust-B"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.38</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">                </span><span class="p">.</span><span class="na">serviceTime</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofMinutes</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Cust-C"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.41</span><span class="p">,</span><span class="w"> </span><span class="mf">2.14</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">()</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">        </span><span class="p">.</span><span class="na">timeLimit</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofSeconds</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">        </span><span class="p">.</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Route</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"%s: %s (%.1f km, load %d)%n"</span><span class="p">,</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">            </span><span class="n">r</span><span class="p">.</span><span class="na">vehicle</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">stops</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">distanceMeters</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000.0</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">load</span><span class="p">());</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Visit</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">visits</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">        </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"  %s  arrive %s, leave %s%n"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">stop</span><span class="p">(),</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">arrival</span><span class="p">(),</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">departure</span><span class="p">());</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="p">}</span>
+</code></pre></div>
+<p>Prints:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Van-1: [Cust-B, Cust-A, Cust-C] (18.3 km, load 12)
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  Cust-B  arrive 08:09, leave 08:19
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  Cust-A  arrive 09:00, leave 09:00
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  Cust-C  arrive 09:04, leave 09:04
+</code></pre></div>
+<p>The van goes to B first, because A is not open yet. It then waits and serves A at exactly
+9:00.</p>
+<p>How to read the model:</p>
+<ul>
+<li><code>depot(id, latitude, longitude)</code> and <code>at(latitude, longitude)</code> place things on the map.
+  Latitude comes first.</li>
+<li><code>capacity(20)</code> and <code>demand(4)</code> use the same unit: boxes, kilograms, whatever you count.</li>
+<li>Distances are worked out from the coordinates. You can also
+  <a href="#distances-and-travel-times">bring your own</a>.</li>
+</ul>
+<h2 id="reading-the-plan">Reading the plan<a class="headerlink" href="#reading-the-plan" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">();</span><span class="w">                 </span><span class="c1">// one Route per vehicle that is used</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">plan</span><span class="p">.</span><span class="na">routeOf</span><span class="p">(</span><span class="s">"Van-1"</span><span class="p">);</span><span class="w">         </span><span class="c1">// Optional with that vehicle's route</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">plan</span><span class="p">.</span><span class="na">vehiclesUsed</span><span class="p">();</span><span class="w">           </span><span class="c1">// 1</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">plan</span><span class="p">.</span><span class="na">totalDistanceMeters</span><span class="p">();</span><span class="w">    </span><span class="c1">// 18260</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">plan</span><span class="p">.</span><span class="na">unassignedStops</span><span class="p">();</span><span class="w">        </span><span class="c1">// stops that were skipped (see "Optional stops")</span>
+</code></pre></div>
+<p>A vehicle that has nothing to do does not appear in <code>routes()</code>.</p>
+<p>For each <code>Route</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">route</span><span class="p">.</span><span class="na">vehicle</span><span class="p">();</span><span class="w">          </span><span class="c1">// "Van-1"</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">route</span><span class="p">.</span><span class="na">depotId</span><span class="p">();</span><span class="w">          </span><span class="c1">// "Depot": where it starts</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">route</span><span class="p">.</span><span class="na">stops</span><span class="p">();</span><span class="w">            </span><span class="c1">// [Cust-B, Cust-A, Cust-C]: names, in visiting order</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">route</span><span class="p">.</span><span class="na">visits</span><span class="p">();</span><span class="w">           </span><span class="c1">// the same stops with times and loads</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">route</span><span class="p">.</span><span class="na">distanceMeters</span><span class="p">();</span><span class="w">   </span><span class="c1">// 18260</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">route</span><span class="p">.</span><span class="na">load</span><span class="p">();</span><span class="w">             </span><span class="c1">// 12: total demand carried</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">route</span><span class="p">.</span><span class="na">startTime</span><span class="p">();</span><span class="w">        </span><span class="c1">// 08:00: leaves the depot</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">route</span><span class="p">.</span><span class="na">endTime</span><span class="p">();</span><span class="w">          </span><span class="c1">// 09:14: back at the depot</span>
+</code></pre></div>
+<p>For each <code>Visit</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">visit</span><span class="p">.</span><span class="na">stop</span><span class="p">();</span><span class="w">          </span><span class="c1">// "Cust-A"</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">visit</span><span class="p">.</span><span class="na">arrival</span><span class="p">();</span><span class="w">       </span><span class="c1">// 09:00: when service starts, after any waiting</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">visit</span><span class="p">.</span><span class="na">departure</span><span class="p">();</span><span class="w">     </span><span class="c1">// when the vehicle leaves</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">visit</span><span class="p">.</span><span class="na">loadAfter</span><span class="p">();</span><span class="w">     </span><span class="c1">// the running total of demand after this stop</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">visit</span><span class="p">.</span><span class="na">minutesLate</span><span class="p">();</span><span class="w">   </span><span class="c1">// 0, unless a soft deadline was missed</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Times appear only when you use time features</p>
+<p>If your model has no opening hours, working hours, service times or breaks, there is
+nothing to schedule. Times are then <code>null</code>, and <code>route.hasTimes()</code> returns <code>false</code>.</p>
+</div>
+<h2 id="a-fleet-of-identical-vehicles">A fleet of identical vehicles<a class="headerlink" href="#a-fleet-of-identical-vehicles" title="Permanent link">&para;</a></h2>
+<p>Instead of declaring each vehicle by hand, ask for several at once:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicles</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="mi">8</span><span class="p">))</span><span class="w">          </span><span class="c1">// three identical vans</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"A"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.16</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"B"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.38</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"C"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.41</span><span class="p">,</span><span class="w"> </span><span class="mf">2.14</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"D"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.33</span><span class="p">,</span><span class="w"> </span><span class="mf">2.09</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Route</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"%s: %s (%.1f km)%n"</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">vehicle</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">stops</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">distanceMeters</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000.0</span><span class="p">);</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>vehicle-1: [D, C] (20.6 km)
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>vehicle-2: [B] (12.0 km)
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>vehicle-3: [A] (10.2 km)
+</code></pre></div>
+<p>The vehicles are named <code>vehicle-1</code>, <code>vehicle-2</code> and so on. Each van holds 8, so A, B and C
+(5 each) cannot share a van. Only D (3) can ride along with another stop.</p>
+<h2 id="goals-what-best-means">Goals: what "best" means<a class="headerlink" href="#goals-what-best-means" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Goal</th>
+<th>In plain words</th>
+<th><code>objective()</code> returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Goals.totalDistance()</code> (default)</td>
+<td>Drive as few meters as possible.</td>
+<td>Total meters.</td>
+</tr>
+<tr>
+<td><code>Goals.totalCost()</code></td>
+<td>Spend as little as possible. Cost includes distance, time, a fee per vehicle used, and lateness.</td>
+<td>Total cost.</td>
+</tr>
+<tr>
+<td><code>Goals.vehiclesUsed()</code></td>
+<td>Use as few vehicles as possible. Among plans with the same number, pick the shortest.</td>
+<td>Number of vehicles.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example: fewest vehicles.</strong> Three vans are available, but the stops fit in one:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicles</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"A"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.16</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"B"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.38</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"C"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.33</span><span class="p">,</span><span class="w"> </span><span class="mf">2.09</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">        </span><span class="p">.</span><span class="na">goal</span><span class="p">(</span><span class="n">Goals</span><span class="p">.</span><span class="na">vehiclesUsed</span><span class="p">())</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="n">plan</span><span class="p">.</span><span class="na">vehiclesUsed</span><span class="p">();</span><span class="w">     </span><span class="c1">// 1</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="n">plan</span><span class="p">.</span><span class="na">objective</span><span class="p">();</span><span class="w">        </span><span class="c1">// OptionalDouble[1.0]</span>
+</code></pre></div>
+<p>With <code>vehiclesUsed()</code>, serving customers comes first. The solver never skips a stop just to
+save a vehicle.</p>
+<h2 id="distances-and-travel-times">Distances and travel times<a class="headerlink" href="#distances-and-travel-times" title="Permanent link">&para;</a></h2>
+<p>orkit needs to know how far apart the places are, and how long the drive takes. There are
+three ways to tell it.</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Distances come from</th>
+<th>Travel times come from</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DistanceSource.haversine()</code> (default)</td>
+<td>The coordinates, in a straight line.</td>
+<td>Distance and <code>travelSpeedKmh</code> (40 by default).</td>
+</tr>
+<tr>
+<td><code>DistanceSource.fromMatrix(meters)</code></td>
+<td>Your table.</td>
+<td>Distance and <code>travelSpeedKmh</code>.</td>
+</tr>
+<tr>
+<td><code>DistanceSource.fromMatrices(meters, minutes)</code></td>
+<td>Your table.</td>
+<td>Your second table.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="straight-line-distances">Straight-line distances<a class="headerlink" href="#straight-line-distances" title="Permanent link">&para;</a></h3>
+<p>The default. <em>Haversine</em> is the name of the formula for the straight-line distance between
+two points on the globe. It is quick to set up, but real roads are longer. Good for a first
+try, less so for final plans.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">.</span><span class="na">travelSpeedKmh</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span><span class="w">      </span><span class="c1">// average speed in town, used to turn distance into time</span>
+</code></pre></div>
+<h3 id="your-own-distance-table">Your own distance table<a class="headerlink" href="#your-own-distance-table" title="Permanent link">&para;</a></h3>
+<p>For real road distances, pass a table (a <em>matrix</em>). The entry in row <code>i</code>, column <code>j</code> is the
+distance in meters from place <code>i</code> to place <code>j</code>.</p>
+<p><strong>The order of rows and columns:</strong> all depots first, in the order you declare them, then all
+stops, in the order you declare them.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1">// Row and column order: the depot first, then the stops in the order they are declared.</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kt">long</span><span class="o">[][]</span><span class="w"> </span><span class="n">meters</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">        </span><span class="c1">//  Depot  Shop-A  Shop-B  Shop-C</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">        </span><span class="p">{</span><span class="w">      </span><span class="mi">0</span><span class="p">,</span><span class="w">   </span><span class="mi">4000</span><span class="p">,</span><span class="w">   </span><span class="mi">6000</span><span class="p">,</span><span class="w">   </span><span class="mi">3000</span><span class="w"> </span><span class="p">},</span><span class="w">   </span><span class="c1">// from Depot</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">        </span><span class="p">{</span><span class="w">   </span><span class="mi">4000</span><span class="p">,</span><span class="w">      </span><span class="mi">0</span><span class="p">,</span><span class="w">   </span><span class="mi">2500</span><span class="p">,</span><span class="w">   </span><span class="mi">5000</span><span class="w"> </span><span class="p">},</span><span class="w">   </span><span class="c1">// from Shop-A</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">        </span><span class="p">{</span><span class="w">   </span><span class="mi">6000</span><span class="p">,</span><span class="w">   </span><span class="mi">2500</span><span class="p">,</span><span class="w">      </span><span class="mi">0</span><span class="p">,</span><span class="w">   </span><span class="mi">4500</span><span class="w"> </span><span class="p">},</span><span class="w">   </span><span class="c1">// from Shop-B</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">        </span><span class="p">{</span><span class="w">   </span><span class="mi">3000</span><span class="p">,</span><span class="w">   </span><span class="mi">5000</span><span class="p">,</span><span class="w">   </span><span class="mi">4500</span><span class="p">,</span><span class="w">      </span><span class="mi">0</span><span class="w"> </span><span class="p">},</span><span class="w">   </span><span class="c1">// from Shop-C</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="p">};</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w">                 </span><span class="c1">// coordinates are not used with a table</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Shop-A"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">demand</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span><span class="w">     </span><span class="c1">// no at(...) needed</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Shop-B"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">demand</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Shop-C"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">demand</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="w">        </span><span class="p">.</span><span class="na">distances</span><span class="p">(</span><span class="n">DistanceSource</span><span class="p">.</span><span class="na">fromMatrix</span><span class="p">(</span><span class="n">meters</span><span class="p">))</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="n">Route</span><span class="w"> </span><span class="n">route</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">().</span><span class="na">get</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="n">route</span><span class="p">.</span><span class="na">stops</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">" "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">route</span><span class="p">.</span><span class="na">distanceMeters</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">" m"</span><span class="p">);</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>[Shop-C, Shop-B, Shop-A] 14000 m
+</code></pre></div>
+<p>Check: Depot to C is 3000, C to B is 4500, B to A is 2500, A back to the depot is 4000.
+Total 14000.</p>
+<p>The table must be square (as many rows as columns, one per place) and must not contain
+negative numbers. The two directions may differ (A to B need not equal B to A), which is
+handy for one-way streets.</p>
+<h3 id="your-own-travel-times-too">Your own travel times too<a class="headerlink" href="#your-own-travel-times-too" title="Permanent link">&para;</a></h3>
+<p>If you also know how long each drive takes, pass a second table with minutes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kt">long</span><span class="o">[][]</span><span class="w"> </span><span class="n">minutes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">        </span><span class="p">{</span><span class="w">  </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span><span class="w">  </span><span class="mi">8</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">        </span><span class="p">{</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w">  </span><span class="mi">0</span><span class="p">,</span><span class="w">  </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">12</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">        </span><span class="p">{</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span><span class="w">  </span><span class="mi">6</span><span class="p">,</span><span class="w">  </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">11</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">        </span><span class="p">{</span><span class="w">  </span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">11</span><span class="p">,</span><span class="w">  </span><span class="mi">0</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="p">};</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="p">.</span><span class="na">distances</span><span class="p">(</span><span class="n">DistanceSource</span><span class="p">.</span><span class="na">fromMatrices</span><span class="p">(</span><span class="n">meters</span><span class="p">,</span><span class="w"> </span><span class="n">minutes</span><span class="p">))</span>
+</code></pre></div>
+<p>With a vehicle that starts at 8:00, the same route now arrives at Shop-C at 08:08, Shop-B at
+08:19 and Shop-A at 08:25.</p>
+<h2 id="several-depots">Several depots<a class="headerlink" href="#several-depots" title="Permanent link">&para;</a></h2>
+<p>Call <code>depot(...)</code> once for each depot. A vehicle uses the first depot unless you say
+otherwise.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"West"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.347</span><span class="p">,</span><span class="w"> </span><span class="mf">2.126</span><span class="p">)</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"East"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.404</span><span class="p">,</span><span class="w"> </span><span class="mf">2.200</span><span class="p">)</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van-1"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">startsAt</span><span class="p">(</span><span class="s">"West"</span><span class="p">).</span><span class="na">capacity</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span><span class="w">                  </span><span class="c1">// leaves from West, returns to West</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van-2"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">startsAt</span><span class="p">(</span><span class="s">"East"</span><span class="p">).</span><span class="na">endsAt</span><span class="p">(</span><span class="s">"West"</span><span class="p">).</span><span class="na">capacity</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span><span class="w">   </span><span class="c1">// leaves from East, finishes at West</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"A"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.36</span><span class="p">,</span><span class="w"> </span><span class="mf">2.11</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"B"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.40</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"C"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.17</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Route</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"%s starts at %s: %s%n"</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">vehicle</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">depotId</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">stops</span><span class="p">());</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Van-1 starts at West: [A]
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>Van-2 starts at East: [B, C]
+</code></pre></div>
+<p>If you set only <code>startsAt</code> or only <code>endsAt</code>, the vehicle uses that depot for both ends.</p>
+<h2 id="capacity">Capacity<a class="headerlink" href="#capacity" title="Permanent link">&para;</a></h2>
+<h3 id="one-kind-of-load">One kind of load<a class="headerlink" href="#one-kind-of-load" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van-1"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van-2"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"A"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.16</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">6</span><span class="p">))</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"B"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.38</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"C"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.41</span><span class="p">,</span><span class="w"> </span><span class="mf">2.14</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Route</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"%s: %s, load %d%n"</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">vehicle</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">stops</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">load</span><span class="p">());</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>Van-1: [B], load 5
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>Van-2: [A, C], load 10
+</code></pre></div>
+<p>The demands add up to 15, more than one van holds, so the solver splits the stops over two
+vans.</p>
+<h3 id="several-kinds-of-load">Several kinds of load<a class="headerlink" href="#several-kinds-of-load" title="Permanent link">&para;</a></h3>
+<p>A truck can be full by weight before it is full by volume, or the other way round. Give each
+kind of load a name:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Truck-1"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="s">"kg"</span><span class="p">,</span><span class="w"> </span><span class="mi">900</span><span class="p">).</span><span class="na">capacity</span><span class="p">(</span><span class="s">"pallets"</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">))</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Truck-2"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="s">"kg"</span><span class="p">,</span><span class="w"> </span><span class="mi">900</span><span class="p">).</span><span class="na">capacity</span><span class="p">(</span><span class="s">"pallets"</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">))</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Shop"</span><span class="p">,</span><span class="w">   </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.16</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="s">"kg"</span><span class="p">,</span><span class="w"> </span><span class="mi">500</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="s">"pallets"</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Market"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.38</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="s">"kg"</span><span class="p">,</span><span class="w"> </span><span class="mi">300</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="s">"pallets"</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">))</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Kiosk"</span><span class="p">,</span><span class="w">  </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.41</span><span class="p">,</span><span class="w"> </span><span class="mf">2.14</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="s">"kg"</span><span class="p">,</span><span class="w"> </span><span class="mi">200</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="s">"pallets"</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Route</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="n">r</span><span class="p">.</span><span class="na">vehicle</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">" "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">stops</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">" carries "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">loads</span><span class="p">());</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>Truck-1 [Shop, Kiosk] carries {kg=700, pallets=4}
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>Truck-2 [Market] carries {kg=300, pallets=3}
+</code></pre></div>
+<p>All three stops together would be 1000 kg and 7 pallets. That is too much for one truck on
+both counts.</p>
+<p>Things to know:</p>
+<ul>
+<li>Each kind of load is checked on its own.</li>
+<li>If a vehicle does not declare a capacity for some kind of load, it has no limit for it.</li>
+<li><code>capacity(n)</code> and <code>demand(n)</code> without a name use a kind called <code>"load"</code>.</li>
+<li><code>route.loads()</code> and <code>visit.loadsAfter()</code> give all kinds. <code>route.load()</code> and
+  <code>visit.loadAfter()</code> give the unnamed one.</li>
+</ul>
+<h3 id="a-limit-on-distance">A limit on distance<a class="headerlink" href="#a-limit-on-distance" title="Permanent link">&para;</a></h3>
+<p><code>maxDistanceMeters(m)</code> caps how far one vehicle may drive in total.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van-1"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">maxDistanceMeters</span><span class="p">(</span><span class="mi">15_000</span><span class="p">))</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van-2"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">maxDistanceMeters</span><span class="p">(</span><span class="mi">15_000</span><span class="p">))</span>
+</code></pre></div>
+<p>In the three-stop example, one van would need 18.3 km. With a limit of 15 km each, the work
+is split: <code>Van-1: [A, C], 14608 m</code> and <code>Van-2: [B], 12034 m</code>.</p>
+<h2 id="time">Time<a class="headerlink" href="#time" title="Permanent link">&para;</a></h2>
+<p>All times are times of day, to the minute. A route happens within a single day.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Kind</th>
+<th>In plain words</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>StopConfig.openFrom(t)</code></td>
+<td>hard</td>
+<td>Service cannot start before <code>t</code>. A vehicle that arrives early waits.</td>
+</tr>
+<tr>
+<td><code>StopConfig.closeAt(t)</code></td>
+<td>hard</td>
+<td>Service cannot start after <code>t</code>.</td>
+</tr>
+<tr>
+<td><code>StopConfig.serviceTime(d)</code></td>
+<td></td>
+<td>How long the vehicle stays at the stop.</td>
+</tr>
+<tr>
+<td><code>StopConfig.lateAfter(t, penaltyPerMinute)</code></td>
+<td>soft</td>
+<td>Service should start by <code>t</code>. Later is allowed, at a cost per minute.</td>
+</tr>
+<tr>
+<td><code>VehicleConfig.availableFrom(t)</code></td>
+<td>hard</td>
+<td>The vehicle cannot leave the depot before <code>t</code>.</td>
+</tr>
+<tr>
+<td><code>VehicleConfig.availableUntil(t)</code></td>
+<td>hard</td>
+<td>The vehicle must be back at the depot by <code>t</code>.</td>
+</tr>
+<tr>
+<td><code>VehicleConfig.maxRouteDuration(d)</code></td>
+<td>hard</td>
+<td>The whole route, waiting included, takes at most <code>d</code>.</td>
+</tr>
+<tr>
+<td><code>VehicleConfig.breakBetween(earliest, latest, d)</code></td>
+<td>hard</td>
+<td>The driver takes a break of length <code>d</code> somewhere between <code>earliest</code> and <code>latest</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><em>Hard</em> means "never broken". <em>Soft</em> means "may be broken at a price".</p>
+<p><strong>Example: a delivery day with opening hours, a soft deadline and a lunch break.</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van-1"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">                </span><span class="p">.</span><span class="na">availableFrom</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">))</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">                </span><span class="p">.</span><span class="na">availableUntil</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">))</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="w">                </span><span class="p">.</span><span class="na">breakBetween</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">Duration</span><span class="p">.</span><span class="na">ofMinutes</span><span class="p">(</span><span class="mi">30</span><span class="p">)))</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Bakery"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.16</span><span class="p">)</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="w">                </span><span class="p">.</span><span class="na">openFrom</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)).</span><span class="na">closeAt</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">))</span><span class="w">    </span><span class="c1">// service must start in this window</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">                </span><span class="p">.</span><span class="na">serviceTime</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofMinutes</span><span class="p">(</span><span class="mi">15</span><span class="p">)))</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Office"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.38</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">)</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="w">                </span><span class="p">.</span><span class="na">lateAfter</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="p">),</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span><span class="w">                           </span><span class="c1">// each minute after 8:15 costs 10</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="w">                </span><span class="p">.</span><span class="na">serviceTime</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofMinutes</span><span class="p">(</span><span class="mi">20</span><span class="p">)))</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"School"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.41</span><span class="p">,</span><span class="w"> </span><span class="mf">2.14</span><span class="p">)</span>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a><span class="w">                </span><span class="p">.</span><span class="na">openFrom</span><span class="p">(</span><span class="n">LocalTime</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">11</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">))</span><span class="w">                                </span><span class="c1">// not before 11:00</span>
+<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a><span class="w">                </span><span class="p">.</span><span class="na">serviceTime</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofMinutes</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>
+<a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a><span class="w">        </span><span class="p">.</span><span class="na">goal</span><span class="p">(</span><span class="n">Goals</span><span class="p">.</span><span class="na">totalCost</span><span class="p">())</span>
+<a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">()</span>
+<a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a><span class="w">        </span><span class="p">.</span><span class="na">timeLimit</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofSeconds</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-19-19" name="__codelineno-19-19" href="#__codelineno-19-19"></a><span class="w">        </span><span class="p">.</span><span class="na">improveWith</span><span class="p">(</span><span class="n">Metaheuristic</span><span class="p">.</span><span class="na">GUIDED_LOCAL_SEARCH</span><span class="p">)</span>
+<a id="__codelineno-19-20" name="__codelineno-19-20" href="#__codelineno-19-20"></a><span class="w">        </span><span class="p">.</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-19-21" name="__codelineno-19-21" href="#__codelineno-19-21"></a>
+<a id="__codelineno-19-22" name="__codelineno-19-22" href="#__codelineno-19-22"></a><span class="n">Route</span><span class="w"> </span><span class="n">route</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">().</span><span class="na">get</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<a id="__codelineno-19-23" name="__codelineno-19-23" href="#__codelineno-19-23"></a><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="s">"Leaves the depot at "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">route</span><span class="p">.</span><span class="na">startTime</span><span class="p">());</span>
+<a id="__codelineno-19-24" name="__codelineno-19-24" href="#__codelineno-19-24"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Visit</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">route</span><span class="p">.</span><span class="na">visits</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-25" name="__codelineno-19-25" href="#__codelineno-19-25"></a><span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"%-7s arrive %s, leave %s, %d min late%n"</span><span class="p">,</span>
+<a id="__codelineno-19-26" name="__codelineno-19-26" href="#__codelineno-19-26"></a><span class="w">            </span><span class="n">v</span><span class="p">.</span><span class="na">stop</span><span class="p">(),</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">arrival</span><span class="p">(),</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">departure</span><span class="p">(),</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">minutesLate</span><span class="p">());</span>
+<a id="__codelineno-19-27" name="__codelineno-19-27" href="#__codelineno-19-27"></a><span class="p">}</span>
+<a id="__codelineno-19-28" name="__codelineno-19-28" href="#__codelineno-19-28"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">DriverBreak</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">route</span><span class="p">.</span><span class="na">breaks</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-29" name="__codelineno-19-29" href="#__codelineno-19-29"></a><span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="s">"Break   "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">b</span><span class="p">.</span><span class="na">start</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">" to "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">b</span><span class="p">.</span><span class="na">end</span><span class="p">());</span>
+<a id="__codelineno-19-30" name="__codelineno-19-30" href="#__codelineno-19-30"></a><span class="p">}</span>
+<a id="__codelineno-19-31" name="__codelineno-19-31" href="#__codelineno-19-31"></a><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="s">"Back at the depot at "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">route</span><span class="p">.</span><span class="na">endTime</span><span class="p">());</span>
+<a id="__codelineno-19-32" name="__codelineno-19-32" href="#__codelineno-19-32"></a><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="s">"Lateness penalty: "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">totalLatenessPenalty</span><span class="p">());</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>Leaves the depot at 08:00
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>Bakery  arrive 08:08, leave 08:23, 0 min late
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>Office  arrive 08:27, leave 08:47, 12 min late
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>School  arrive 11:00, leave 11:10, 0 min late
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>Break   10:00 to 10:30
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>Back at the depot at 11:20
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>Lateness penalty: 120
+</code></pre></div>
+<p>The bakery must be served before 8:30, so it comes first. The office is then reached at
+8:27, twelve minutes after its soft deadline: 12 minutes at 10 each gives a penalty of 120.
+The driver takes the break while waiting for the school to open.</p>
+<p>Things to know:</p>
+<ul>
+<li>"Arrive" means the moment service starts. If the vehicle gets there early, the waiting is
+  already included.</li>
+<li>A break never interrupts the service at a stop. It happens on the way between two stops,
+  or before the route starts, or after it ends, if the break window allows that.</li>
+<li>Combine <code>lateAfter</code> with <code>closeAt</code> to set a final limit: "should be there by 9:00, must be
+  there by 10:00".</li>
+<li>Travel time is the same at any hour. There is no rush-hour model.</li>
+</ul>
+<h2 id="costs">Costs<a class="headerlink" href="#costs" title="Permanent link">&para;</a></h2>
+<p>Under <code>Goals.totalCost()</code>, the solver adds up money instead of meters.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Default</th>
+<th>In plain words</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VehicleConfig.costPerMeter(c)</code></td>
+<td>1</td>
+<td>Cost of each meter driven.</td>
+</tr>
+<tr>
+<td><code>VehicleConfig.costPerMinute(c)</code></td>
+<td>0</td>
+<td>Cost of each minute between leaving and returning, such as the driver's wage.</td>
+</tr>
+<tr>
+<td><code>VehicleConfig.fixedCost(c)</code></td>
+<td>0</td>
+<td>Charged once if the vehicle is used at all, such as a rental fee.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">costPerMeter</span><span class="p">(</span><span class="mi">2</span><span class="p">).</span><span class="na">costPerMinute</span><span class="p">(</span><span class="mi">50</span><span class="p">).</span><span class="na">fixedCost</span><span class="p">(</span><span class="mi">10_000</span><span class="p">))</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"A"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.16</span><span class="p">).</span><span class="na">serviceTime</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofMinutes</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"B"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.38</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">).</span><span class="na">serviceTime</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofMinutes</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">        </span><span class="p">.</span><span class="na">goal</span><span class="p">(</span><span class="n">Goals</span><span class="p">.</span><span class="na">totalCost</span><span class="p">())</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="n">Route</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">().</span><span class="na">get</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"%d m, %s to %s%n"</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">distanceMeters</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">startTime</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">endTime</span><span class="p">());</span>
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"fixed %d + variable %d = %.0f%n"</span><span class="p">,</span>
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a><span class="w">        </span><span class="n">r</span><span class="p">.</span><span class="na">fixedCost</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">variableCost</span><span class="p">(),</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">objective</span><span class="p">().</span><span class="na">orElseThrow</span><span class="p">());</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>13860 m, 00:00 to 00:41
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>fixed 10000 + variable 29770 = 39770
+</code></pre></div>
+<p>The variable cost is 13,860 meters at 2 each (27,720) plus 41 minutes at 50 each (2,050).</p>
+<p>With the default values (1 per meter, nothing else), cost and distance are the same number.</p>
+<p>A fixed cost makes the solver think twice before sending out another vehicle. Give a hired
+van a high <code>fixedCost</code> and it is used only when your own vans cannot do the job.</p>
+<h2 id="optional-stops">Optional stops<a class="headerlink" href="#optional-stops" title="Permanent link">&para;</a></h2>
+<p>By default <strong>every stop must be visited</strong>. If that is impossible (not enough capacity, not
+enough time), the result is <code>INFEASIBLE</code>.</p>
+<p>To let the solver skip stops when it has to, set a <em>penalty</em>: the price of skipping one.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">        </span><span class="p">.</span><span class="na">allowDroppingStops</span><span class="p">(</span><span class="mi">50_000</span><span class="p">)</span><span class="w">                                   </span><span class="c1">// skipping a stop costs 50,000</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Big-order"</span><span class="p">,</span><span class="w">   </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.16</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">6</span><span class="p">))</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Small-order"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.38</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Sample"</span><span class="p">,</span><span class="w">      </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.41</span><span class="p">,</span><span class="w"> </span><span class="mf">2.14</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="w">                </span><span class="p">.</span><span class="na">penaltyIfDropped</span><span class="p">(</span><span class="mi">5_000</span><span class="p">))</span><span class="w">                             </span><span class="c1">// this one is cheap to skip</span>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="s">"Served:  "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">().</span><span class="na">get</span><span class="p">(</span><span class="mi">0</span><span class="p">).</span><span class="na">stops</span><span class="p">());</span>
+<a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="s">"Skipped: "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">unassignedStops</span><span class="p">());</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>Served:  [Big-order, Small-order]
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>Skipped: [Sample]
+</code></pre></div>
+<p>The van holds 10 and the three orders need 13. Something has to stay behind, and the sample
+is the cheapest to skip.</p>
+<ul>
+<li><code>allowDroppingStops(penalty)</code> sets the price for every stop.</li>
+<li><code>penaltyIfDropped(penalty)</code> on a stop sets its own price. Use a high value for important
+  customers and a low one for stops that can wait.</li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Pick a penalty that is large enough</p>
+<p>The penalty is compared with the distance saved. If skipping a stop costs 500 and
+visiting it means a 2 km detour, the solver skips it, even though visiting was possible.
+Use a penalty larger than any detour in your area. See
+<a href="../guide/modeling-notes.html#choosing-the-penalty-for-skipping-a-stop">Modeling notes</a>.</p>
+</div>
+<h2 id="skills">Skills<a class="headerlink" href="#skills" title="Permanent link">&para;</a></h2>
+<p>Some stops need a special vehicle: refrigerated, with a tail lift, with a certified driver.
+Give vehicles <em>skills</em> and say what each stop <em>requires</em>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Reefer"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">skills</span><span class="p">(</span><span class="s">"cold"</span><span class="p">))</span><span class="w">          </span><span class="c1">// a refrigerated truck</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Van"</span><span class="p">,</span><span class="w">    </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">{})</span><span class="w">                        </span><span class="c1">// an ordinary van</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Fish"</span><span class="p">,</span><span class="w">   </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.39</span><span class="p">,</span><span class="w"> </span><span class="mf">2.16</span><span class="p">).</span><span class="na">requires</span><span class="p">(</span><span class="s">"cold"</span><span class="p">))</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Bread"</span><span class="p">,</span><span class="w">  </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.38</span><span class="p">,</span><span class="w"> </span><span class="mf">2.19</span><span class="p">))</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Cheese"</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.41</span><span class="p">,</span><span class="w"> </span><span class="mf">2.14</span><span class="p">).</span><span class="na">requires</span><span class="p">(</span><span class="s">"cold"</span><span class="p">))</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a>
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Route</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a><span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"%s: %s (%.1f km)%n"</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">vehicle</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">stops</span><span class="p">(),</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="na">distanceMeters</span><span class="p">()</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000.0</span><span class="p">);</span>
+<a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>Reefer: [Bread, Fish, Cheese] (18.3 km)
+</code></pre></div>
+<p>Fish and cheese can only travel in the refrigerated truck. The bread could go in either, and
+taking it along is shorter than sending the van out.</p>
+<p>A stop is served only by a vehicle that has <strong>all</strong> the skills it requires. If no vehicle
+qualifies, you find out immediately:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>ModelException: Stop 'Fish' requires skills [cold] but no vehicle has them.
+</code></pre></div>
+<h2 id="pickup-and-delivery">Pickup and delivery<a class="headerlink" href="#pickup-and-delivery" title="Permanent link">&para;</a></h2>
+<p>Sometimes goods do not come from the depot. They are picked up at one stop and dropped at
+another: a courier, a taxi, a furniture mover.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Optimize</span><span class="p">.</span><span class="na">vehicleRouting</span><span class="p">()</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="w">        </span><span class="p">.</span><span class="na">depot</span><span class="p">(</span><span class="s">"Depot"</span><span class="p">,</span><span class="w"> </span><span class="mf">41.35</span><span class="p">,</span><span class="w"> </span><span class="mf">2.13</span><span class="p">)</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">        </span><span class="p">.</span><span class="na">vehicle</span><span class="p">(</span><span class="s">"Courier"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">capacity</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Pick-sofa"</span><span class="p">,</span><span class="w">  </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.36</span><span class="p">,</span><span class="w"> </span><span class="mf">2.10</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span><span class="w">    </span><span class="c1">// the sofa goes on here</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Drop-sofa"</span><span class="p">,</span><span class="w">  </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.33</span><span class="p">,</span><span class="w"> </span><span class="mf">2.05</span><span class="p">))</span><span class="w">              </span><span class="c1">// and comes off here</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Pick-lamp"</span><span class="p">,</span><span class="w">  </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.40</span><span class="p">,</span><span class="w"> </span><span class="mf">2.18</span><span class="p">).</span><span class="na">demand</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="w">        </span><span class="p">.</span><span class="na">stop</span><span class="p">(</span><span class="s">"Drop-lamp"</span><span class="p">,</span><span class="w">  </span><span class="n">s</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="na">at</span><span class="p">(</span><span class="mf">41.42</span><span class="p">,</span><span class="w"> </span><span class="mf">2.15</span><span class="p">))</span>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="w">        </span><span class="p">.</span><span class="na">pickupAndDelivery</span><span class="p">(</span><span class="s">"Pick-sofa"</span><span class="p">,</span><span class="w"> </span><span class="s">"Drop-sofa"</span><span class="p">)</span>
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a><span class="w">        </span><span class="p">.</span><span class="na">pickupAndDelivery</span><span class="p">(</span><span class="s">"Pick-lamp"</span><span class="p">,</span><span class="w"> </span><span class="s">"Drop-lamp"</span><span class="p">)</span>
+<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a><span class="w">        </span><span class="p">.</span><span class="na">solver</span><span class="p">().</span><span class="na">solve</span><span class="p">();</span>
+<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a>
+<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Visit</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">plan</span><span class="p">.</span><span class="na">routes</span><span class="p">().</span><span class="na">get</span><span class="p">(</span><span class="mi">0</span><span class="p">).</span><span class="na">visits</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">printf</span><span class="p">(</span><span class="s">"%-10s load afterwards: %d%n"</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">stop</span><span class="p">(),</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="na">loadAfter</span><span class="p">());</span>
+<a id="__codelineno-28-14" name="__codelineno-28-14" href="#__codelineno-28-14"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>Pick-lamp  load afterwards: 1
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>Drop-lamp  load afterwards: 0
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>Pick-sofa  load afterwards: 4
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>Drop-sofa  load afterwards: 0
+</code></pre></div>
+<p>For each pair:</p>
+<ul>
+<li>The same vehicle does both stops, the pickup first.</li>
+<li>The demand on the <strong>pickup</strong> is what the vehicle carries between the two. Leave the demand
+  off the delivery stop.</li>
+<li>If skipping is allowed, both stops are skipped together.</li>
+</ul>
+<p>When a vehicle carries several pairs at once, you can control the unloading order:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="p">.</span><span class="na">pickupAndDeliveryPolicy</span><span class="p">(</span><span class="n">PickupDeliveryPolicy</span><span class="p">.</span><span class="na">LIFO</span><span class="p">)</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>In plain words</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ANY</code> (default)</td>
+<td>No restriction.</td>
+</tr>
+<tr>
+<td><code>LIFO</code></td>
+<td>Last in, first out: like a van loaded from the back, where the last item loaded is the first one you can reach.</td>
+</tr>
+<tr>
+<td><code>FIFO</code></td>
+<td>First in, first out: items are delivered in the order they were picked up.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="tuning-the-search">Tuning the search<a class="headerlink" href="#tuning-the-search" title="Permanent link">&para;</a></h2>
+<p>For most problems the defaults are fine. To squeeze out shorter routes, give the solver more
+time and a stronger improvement method:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="n">RoutingPlan</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">problem</span><span class="p">.</span><span class="na">solver</span><span class="p">()</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="w">        </span><span class="p">.</span><span class="na">timeLimit</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofSeconds</span><span class="p">(</span><span class="mi">30</span><span class="p">))</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="w">        </span><span class="p">.</span><span class="na">firstSolution</span><span class="p">(</span><span class="n">Strategy</span><span class="p">.</span><span class="na">SAVINGS</span><span class="p">)</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="w">        </span><span class="p">.</span><span class="na">improveWith</span><span class="p">(</span><span class="n">Metaheuristic</span><span class="p">.</span><span class="na">GUIDED_LOCAL_SEARCH</span><span class="p">)</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="w">        </span><span class="p">.</span><span class="na">solve</span><span class="p">();</span>
+</code></pre></div>
+<p><a href="../guide/solver-knobs.html#vehicle-routing-the-routing-solver">Solver settings</a> explains these
+options, and how to watch progress, continue from yesterday's plan, or stop early.</p>
+<h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>One day only.</strong> A route cannot run past midnight or span several days.</li>
+<li><strong>No rush hour.</strong> Travel time between two places is the same at any time of day.</li>
+<li><strong>No proof of the best plan.</strong> There is no bound and no gap for routing results.</li>
+<li><strong>No worker count or seed.</strong> The routing engine does not offer them.</li>
+</ul>
+<h2 id="reference">Reference<a class="headerlink" href="#reference" title="Permanent link">&para;</a></h2>
+<h3 id="routingbuilder"><code>RoutingBuilder</code><a class="headerlink" href="#routingbuilder" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>depot(id, lat, lon)</code></td>
+<td>Declare a depot. The first one is the default.</td>
+</tr>
+<tr>
+<td><code>vehicle(id, config)</code></td>
+<td>Declare one vehicle.</td>
+</tr>
+<tr>
+<td><code>vehicles(count, config)</code></td>
+<td>Declare several identical vehicles, named <code>vehicle-1</code>, <code>vehicle-2</code>...</td>
+</tr>
+<tr>
+<td><code>stop(id, config)</code></td>
+<td>Declare a stop.</td>
+</tr>
+<tr>
+<td><code>pickupAndDelivery(pickup, delivery)</code></td>
+<td>Link two stops as a pickup and its delivery.</td>
+</tr>
+<tr>
+<td><code>pickupAndDeliveryPolicy(policy)</code></td>
+<td><code>ANY</code>, <code>LIFO</code> or <code>FIFO</code>.</td>
+</tr>
+<tr>
+<td><code>distances(DistanceSource)</code></td>
+<td>Where distances and travel times come from.</td>
+</tr>
+<tr>
+<td><code>travelSpeedKmh(double)</code></td>
+<td>Average speed, when travel times are worked out from distance.</td>
+</tr>
+<tr>
+<td><code>allowDroppingStops(penalty)</code></td>
+<td>Allow skipping stops, at this price each.</td>
+</tr>
+<tr>
+<td><code>goal(RoutingGoal)</code></td>
+<td>Choose the goal.</td>
+</tr>
+<tr>
+<td><code>build()</code>, <code>solver()</code></td>
+<td>Freeze the problem, or go straight to solving.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="vehicleconfig"><code>VehicleConfig</code><a class="headerlink" href="#vehicleconfig" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>capacity(n)</code>, <code>capacity(name, n)</code></td>
+<td>How much the vehicle carries.</td>
+</tr>
+<tr>
+<td><code>maxDistanceMeters(m)</code></td>
+<td>Longest total distance.</td>
+</tr>
+<tr>
+<td><code>startsAt(depot)</code>, <code>endsAt(depot)</code></td>
+<td>Start and end depots.</td>
+</tr>
+<tr>
+<td><code>availableFrom(t)</code>, <code>availableUntil(t)</code></td>
+<td>Working hours.</td>
+</tr>
+<tr>
+<td><code>maxRouteDuration(d)</code></td>
+<td>Longest route, in time.</td>
+</tr>
+<tr>
+<td><code>breakBetween(earliest, latest, d)</code></td>
+<td>A driver break. Can be called several times.</td>
+</tr>
+<tr>
+<td><code>skills(String...)</code></td>
+<td>What this vehicle can do.</td>
+</tr>
+<tr>
+<td><code>fixedCost(c)</code>, <code>costPerMeter(c)</code>, <code>costPerMinute(c)</code></td>
+<td>Costs.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="stopconfig"><code>StopConfig</code><a class="headerlink" href="#stopconfig" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>at(lat, lon)</code></td>
+<td>Where the stop is. Not needed with your own distance table.</td>
+</tr>
+<tr>
+<td><code>demand(n)</code>, <code>demand(name, n)</code></td>
+<td>How much room the stop takes in the vehicle.</td>
+</tr>
+<tr>
+<td><code>serviceTime(d)</code></td>
+<td>Time spent at the stop.</td>
+</tr>
+<tr>
+<td><code>openFrom(t)</code>, <code>closeAt(t)</code></td>
+<td>Opening hours for the start of service.</td>
+</tr>
+<tr>
+<td><code>lateAfter(t, penaltyPerMinute)</code></td>
+<td>A soft deadline.</td>
+</tr>
+<tr>
+<td><code>requires(String...)</code></td>
+<td>Skills the vehicle must have.</td>
+</tr>
+<tr>
+<td><code>penaltyIfDropped(penalty)</code></td>
+<td>This stop's own price for being skipped.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="routingplan"><code>RoutingPlan</code><a class="headerlink" href="#routingplan" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>routes()</code></td>
+<td>One <code>Route</code> per vehicle that serves at least one stop.</td>
+</tr>
+<tr>
+<td><code>routeOf(vehicle)</code></td>
+<td>That vehicle's route. Empty if it is not used or the name is unknown.</td>
+</tr>
+<tr>
+<td><code>unassignedStops()</code></td>
+<td>Names of stops that were skipped.</td>
+</tr>
+<tr>
+<td><code>vehiclesUsed()</code></td>
+<td>Number of routes.</td>
+</tr>
+<tr>
+<td><code>totalDistanceMeters()</code></td>
+<td>Sum of all route distances.</td>
+</tr>
+<tr>
+<td><code>totalFixedCost()</code>, <code>totalVariableCost()</code>, <code>totalLatenessPenalty()</code></td>
+<td>Cost totals over all routes.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="route"><code>Route</code><a class="headerlink" href="#route" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vehicle()</code>, <code>depotId()</code></td>
+<td>The vehicle and its start depot.</td>
+</tr>
+<tr>
+<td><code>stops()</code></td>
+<td>Stop names in visiting order.</td>
+</tr>
+<tr>
+<td><code>visits()</code></td>
+<td>One <code>Visit</code> per stop, with times and loads.</td>
+</tr>
+<tr>
+<td><code>distanceMeters()</code></td>
+<td>Length of the route.</td>
+</tr>
+<tr>
+<td><code>load()</code>, <code>loads()</code></td>
+<td>Total demand carried: the unnamed kind, or all kinds by name.</td>
+</tr>
+<tr>
+<td><code>fixedCost()</code>, <code>variableCost()</code>, <code>latenessPenalty()</code></td>
+<td>Costs of this route.</td>
+</tr>
+<tr>
+<td><code>breaks()</code></td>
+<td>The driver's breaks, each with <code>start()</code> and <code>end()</code>.</td>
+</tr>
+<tr>
+<td><code>startTime()</code>, <code>endTime()</code></td>
+<td>Leaving and returning times. <code>null</code> without time features.</td>
+</tr>
+<tr>
+<td><code>hasTimes()</code></td>
+<td>Whether times are available.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="visit"><code>Visit</code><a class="headerlink" href="#visit" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>stop()</code></td>
+<td>The stop's name.</td>
+</tr>
+<tr>
+<td><code>arrival()</code></td>
+<td>When service starts, after any waiting.</td>
+</tr>
+<tr>
+<td><code>departure()</code></td>
+<td>When the vehicle leaves.</td>
+</tr>
+<tr>
+<td><code>loadAfter()</code>, <code>loadsAfter()</code></td>
+<td>The running total of demand after this stop. A delivery that belongs to a pickup takes its load off again.</td>
+</tr>
+<tr>
+<td><code>minutesLate()</code></td>
+<td>Minutes past the soft deadline, or 0.</td>
+</tr>
+</tbody>
+</table>
+<p>The plan also has <code>status()</code>, <code>objective()</code> and <code>runtime()</code>, as described in
+<a href="../guide/concepts.html#solutions-reading-the-answer">Solutions</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="scheduling.html" class="md-footer__link md-footer__link--prev" aria-label="Previous: Shift scheduling">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Shift scheduling
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="knapsack.html" class="md-footer__link md-footer__link--next" aria-label="Next: Multiple knapsack">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Multiple knapsack
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Licensed under the Apache License, Version 2.0
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tabs.link"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>
